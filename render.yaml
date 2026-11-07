@@ -1,0 +1,37 @@
+# One-click deploy on Render: New → Blueprint → pick this repo.
+# Works out of the box as a live demo (embedded MongoDB, seeded demo workspace, simulated calls).
+# For real use, set MONGO_URI (e.g. a free MongoDB Atlas cluster) so data survives restarts,
+# and add OPENAI / TWILIO / VAPI / ELEVENLABS / GOOGLE keys as needed (see server/.env.example).
+services:
+  - type: web
+    name: ai-sales-agent
+    runtime: node
+    plan: free
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: cd server && node dist/index.js
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: "22"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: ENCRYPTION_KEY
+        generateValue: true
+      - key: SEED_DEMO
+        value: "true"
+      - key: MONGO_URI
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: ELEVENLABS_API_KEY
+        sync: false
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: GOOGLE_CALENDAR_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CALENDAR_CLIENT_SECRET
+        sync: false

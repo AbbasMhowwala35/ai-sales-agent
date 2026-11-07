@@ -1,0 +1,30 @@
+import { defineConfig } from 'vitest/config';
+export default defineConfig({
+  test: {
+    environment: 'node',
+    globalSetup: ['./tests/globalSetup.ts'],
+    testTimeout: 30000,
+    hookTimeout: 180000,
+    fileParallelism: false,
+    env: {
+      NODE_ENV: 'test',
+      SIMULATOR_SPEED_MS: '0',
+      RUN_WORKERS: 'false',
+      TELEPHONY_PROVIDER: 'simulator',
+      LLM_PROVIDER: 'local',
+      EMBEDDING_PROVIDER: 'local',
+      OPENAI_API_KEY: '',
+      TWILIO_AUTH_TOKEN: 'test_twilio_token',
+      TWILIO_ACCOUNT_SID: 'ACtest',
+      TWILIO_FROM_NUMBER: '+15005550006',
+      VAPI_WEBHOOK_SECRET: 'vapi_test_secret',
+      PUBLIC_BASE_URL: 'https://api.example.test',
+      STORAGE_DIR: './.test-storage',
+      RATE_LIMIT_PER_MINUTE: '100000',
+      AUTH_RATE_LIMIT_PER_15MIN: '100000',
+      ALLOW_PRIVATE_FETCH: '1',
+      ENCRYPTION_KEY: 'test-encryption-key-test-encryption-key',
+      JWT_SECRET: 'test-jwt-secret-test-jwt-secret',
+    },
+  },
+});

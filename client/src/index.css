@@ -1,0 +1,46 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --ink: 22 33 58; --muted: 92 104 128; --paper: 245 247 250; --surface: 255 255 255; --sunken: 237 240 245;
+  --line: 226 230 237; --signal: 11 143 130; --signal-soft: 222 243 240; --signal-ink: 6 94 86;
+  --hot: 217 130 43; --warm: 201 168 52; --cold: 110 143 181; --danger: 200 64 64; --nav: 22 33 58;
+  color-scheme: light;
+}
+.dark {
+  --ink: 230 234 242; --muted: 148 160 184; --paper: 14 20 36; --surface: 22 32 54; --sunken: 18 26 44;
+  --line: 40 52 78; --signal: 43 195 178; --signal-soft: 17 58 62; --signal-ink: 120 226 214;
+  --hot: 236 155 74; --warm: 222 192 84; --cold: 140 172 210; --danger: 236 104 104; --nav: 10 15 28;
+  color-scheme: dark;
+}
+html, body, #root { height: 100%; }
+body { @apply bg-paper text-ink font-sans antialiased; font-size: 14px; line-height: 1.5; }
+h1, h2, h3 { @apply font-display; letter-spacing: -0.01em; }
+.tnum { font-variant-numeric: tabular-nums; }
+:focus-visible { outline: 2px solid rgb(var(--signal)); outline-offset: 2px; border-radius: 6px; }
+/* fields already show a focus ring — avoid a double border */
+input:focus-visible, textarea:focus-visible, select:focus-visible { outline: none; }
+.input:focus-within { border-color: rgb(var(--signal)); box-shadow: 0 0 0 2px rgb(var(--signal) / .3); }
+.input input:focus { outline: none; box-shadow: none; }
+
+@layer components {
+  .btn { @apply inline-flex items-center justify-center gap-2 rounded-control px-3.5 h-9 text-sm font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap; }
+  .btn-primary { @apply btn bg-signal text-white hover:bg-signal-ink dark:text-paper dark:hover:bg-signal-ink; }
+  .btn-secondary { @apply btn bg-surface border border-line text-ink hover:bg-sunken; }
+  .btn-ghost { @apply btn text-muted hover:text-ink hover:bg-sunken; }
+  .btn-danger { @apply btn bg-danger text-white hover:opacity-90; }
+  .btn-sm { @apply h-8 px-2.5 text-[13px]; }
+  .input { @apply w-full h-9 rounded-control border border-line bg-surface px-3 text-sm text-ink placeholder:text-muted/70 focus:outline-none focus:ring-2 focus:ring-signal/40 focus:border-signal; }
+  textarea.input { @apply h-auto py-2 leading-relaxed; }
+  select.input { @apply pr-8; }
+  .label { @apply block text-[13px] font-semibold text-ink mb-1.5; }
+  .hint { @apply text-xs text-muted mt-1; }
+  .panel { @apply bg-surface border border-line rounded-panel; }
+  .th { @apply text-left text-xs font-semibold text-muted px-4 py-2.5 border-b border-line bg-sunken/60 whitespace-nowrap; }
+  .td { @apply px-4 py-3 border-b border-line align-middle; }
+}
+
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+@keyframes pulse-ring { 0% { box-shadow: 0 0 0 0 rgb(var(--signal) / .5); } 100% { box-shadow: 0 0 0 8px rgb(var(--signal) / 0); } }
+.live-dot { animation: pulse-ring 1.4s ease-out infinite; }
