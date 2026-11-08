@@ -6,27 +6,45 @@ export class ApiError extends Error {
 
 const BASE = import.meta.env.VITE_API_URL ?? '';
 
-/** Free hosting sleeps when idle; the first requests after that fail or hang for up to a minute while it wakes. */
-const WAKE_DELAYS = [1500, 3000, 5000, 8000, 12000, 15000];
-let waking = 0;
-function setWaking(on: boolean) { waking = Math.max(0, waking + (on ? 1 : -1)); window.dispatchEvent(new CustomEvent('server-waking', { detail: waking > 0 })); }
+/*
+ * Free hosting sleeps when idle; the first requests after that fail (502/503) or hang while it wakes.
+ * Instead of every request retrying on its own (which floods a waking server), ONE shared health check
+ * waits for the server; requests that failed wait on it and then try exactly once more.
+ */
+let waking = false;
+function setWaking(on: boolean) { if (waking !== on) { waking = on; window.dispatchEvent(new CustomEvent('server-waking', { detail: on })); } }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+let wakeGate: Promise<boolean> | null = null;
+function waitForServer(): Promise<boolean> {
+  if (!wakeGate) {
+    wakeGate = (async () => {
+      setWaking(true);
+      try {
+        for (const d of [1500, 3000, 5000, 8000, 10000, 12000, 15000]) {
+          await sleep(d);
+          try { const r = await fetch(`${BASE}/api/health`, { cache: 'no-store' }); if (r.ok) return true; } catch { /* still asleep */ }
+        }
+        return false;
+      } finally { setWaking(false); wakeGate = null; }
+    })();
+  }
+  return wakeGate;
+}
+const wakeable = (e: any) => e instanceof ApiError && (e.status === 0 || e.status === 502 || e.status === 503 || e.status === 504 || e.code === 'NOT_JSON');
 
 export async function api<T = any>(path: string, opts: { method?: string; body?: any; form?: FormData; signal?: AbortSignal; raw?: boolean } = {}): Promise<T> {
-  const isGet = (opts.method ?? (opts.body || opts.form ? 'POST' : 'GET')) === 'GET';
-  if (!isGet) return request<T>(path, opts);
-  // GETs are safe to repeat: retry quietly while the server is starting up.
-  let flagged = false;
-  try {
-    for (let i = 0; ; i++) {
-      try { return await request<T>(path, opts); } catch (e: any) {
-        const wakeable = e instanceof ApiError && (e.status === 0 || e.status === 502 || e.status === 503 || e.status === 504 || e.code === 'NOT_JSON');
-        if (!wakeable || i >= WAKE_DELAYS.length || opts.signal?.aborted) throw e;
-        if (!flagged) { flagged = true; setWaking(true); }
-        await sleep(WAKE_DELAYS[i]);
-      }
-    }
-  } finally { if (flagged) setWaking(false); }
+  const method = opts.method ?? (opts.body || opts.form ? 'POST' : 'GET');
+  if (method !== 'GET') {
+    const out = await request<T>(path, opts);
+    window.dispatchEvent(new Event('api-mutated')); // saved something → remembered GET answers are stale
+    return out;
+  }
+  if (wakeGate) await wakeGate; // server is waking: queue behind the shared check instead of piling on
+  try { return await request<T>(path, opts); } catch (e: any) {
+    if (!wakeable(e) || opts.signal?.aborted) throw e;
+    if (!(await waitForServer())) throw e;
+    return request<T>(path, opts);
+  }
 }
 
 async function request<T = any>(path: string, opts: { method?: string; body?: any; form?: FormData; signal?: AbortSignal; raw?: boolean } = {}): Promise<T> {

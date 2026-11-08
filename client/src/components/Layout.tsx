@@ -77,11 +77,10 @@ function SystemBadge() {
 
 function Notifications() {
   const [open, setOpen] = useState(false);
-  const { data, reload } = useApi<any>('/notifications', { poll: 15000 });
+  const { data, reload } = useApi<any>('/notifications', { poll: 60000, staleMs: 15000 });
   const nav = useNavigate();
   const ref = useRef<HTMLDivElement>(null);
-  // Live: refresh when you come back to the tab, and pop up anything new that arrived since the last check.
-  useEffect(() => { const h = () => { if (document.visibilityState === 'visible') reload(); }; document.addEventListener('visibilitychange', h); window.addEventListener('focus', h); return () => { document.removeEventListener('visibilitychange', h); window.removeEventListener('focus', h); }; /* eslint-disable-next-line */ }, []);
+  // Pop up anything new that arrived since the last check (refreshes every minute while the tab is visible).
   const seen = useRef<Set<string> | null>(null);
   useEffect(() => {
     if (!data?.items) return;

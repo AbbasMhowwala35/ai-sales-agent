@@ -14,7 +14,9 @@ import { timeAgo } from '../lib/format';
 export default function Campaigns() {
   const can = useAuth((s) => s.can('campaigns:write'));
   const [params, setParams] = useSearchParams();
-  const { data, error, reload } = useApi<any>('/campaigns', { poll: 8000 });
+  const [anyActive, setAnyActive] = useState(false);
+  const { data, error, reload } = useApi<any>('/campaigns', { poll: anyActive ? 30000 : 0 });
+  useEffect(() => { if (data) setAnyActive(data.items.some((c: any) => c.status === 'active')); }, [data]);
   const creating = params.get('new') === '1';
   const act = async (id: string, a: string) => { try { await post(`/campaigns/${id}/${a}`); toast.success(a === 'pause' ? 'Campaign paused — no new calls will start' : 'Campaign is live'); reload(); } catch (e: any) { toast.error(e.message); } };
   return (

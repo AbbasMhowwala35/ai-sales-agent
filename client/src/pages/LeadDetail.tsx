@@ -55,7 +55,7 @@ const ACT_ICON: Record<string, any> = { note: StickyNote, call: PhoneCall, remin
 
 export default function LeadDetail() {
   const { id } = useParams();
-  const { data, error, reload } = useApi<any>(`/leads/${id}`, { poll: 10000 });
+  const { data, error, reload } = useApi<any>(`/leads/${id}`, { poll: 60000 });
   const team = useApi<any>('/team');
   const { can } = useAuth();
   const [calling, setCalling] = useState(false);

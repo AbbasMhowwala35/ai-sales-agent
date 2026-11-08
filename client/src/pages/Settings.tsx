@@ -17,7 +17,7 @@ const SIZES = ['1-10', '11-50', '51-200', '201-500', '501-1000', '1000+'];
 export default function Settings() {
   const [params, setParams] = useSearchParams();
   const tab = (params.get('tab') as Tab) ?? 'profile';
-  const { data, error, reload } = useApi<any>('/business');
+  const { data, error, reload, setData } = useApi<any>('/business');
   const [b, setB] = useState<any>();
   const [saving, setSaving] = useState(false);
   const canEdit = useAuth((s) => s.can('business:write'));
@@ -36,8 +36,16 @@ export default function Settings() {
       body.salesScripts = (body.salesScripts ?? []).filter((f: any) => f.name?.trim() && f.content?.trim());
       for (const k of Object.keys(body)) if (body[k] === null) delete body[k];
       if (body.icp) for (const k of ['budgetMin', 'budgetMax']) if (body.icp[k] === '' || body.icp[k] === null) delete body.icp[k]; else if (body.icp[k] !== undefined) body.icp[k] = Number(body.icp[k]);
-      const saved = await patch('/business', { ...body, onboardingComplete: true });
-      setB(saved); toast.success('Business settings saved. Your agent’s knowledge has been updated.');
+      // Send only what changed since the last load/save — not the whole business.
+      const orig: any = data ?? {};
+      const changed: any = {};
+      for (const k of Object.keys(body)) if (JSON.stringify(body[k] ?? null) !== JSON.stringify(orig[k] ?? null)) changed[k] = body[k];
+      if (!orig.onboardingComplete) changed.onboardingComplete = true;
+      if (!Object.keys(changed).length) { toast.info('No changes to save'); return; }
+      const saved = await patch('/business', changed);
+      setB(saved); setData(saved);
+      const profileKeys = ['name', 'description', 'products', 'services', 'faqs', 'salesScripts', 'targetAudience', 'industry', 'website', 'location', 'goals'];
+      toast.success(Object.keys(changed).some((k) => profileKeys.includes(k)) ? 'Saved. Your agent’s knowledge has been updated.' : 'Saved.');
     } catch (e: any) { toast.error(e.message); } finally { setSaving(false); }
   };
   const tabs: { id: Tab; label: string }[] = [

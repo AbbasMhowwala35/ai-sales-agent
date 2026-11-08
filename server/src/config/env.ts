@@ -66,7 +66,7 @@ const schema = z.object({
   // Workers
   RUN_WORKERS: bool(true),
   QUEUE_POLL_MS: z.coerce.number().default(1000),
-  SCHEDULER_TICK_MS: z.coerce.number().default(15000),
+  SCHEDULER_TICK_MS: z.coerce.number().default(30000),
   RATE_LIMIT_PER_MINUTE: z.coerce.number().default(300),
   AUTH_RATE_LIMIT_PER_15MIN: z.coerce.number().default(30),
 });
