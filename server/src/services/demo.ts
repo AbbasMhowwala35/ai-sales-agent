@@ -19,7 +19,19 @@ export const DEMO_PASSWORD = 'Demo1234!';
  * and ~2 weeks of simulated calls replayed through the real scheduler, so outcomes and follow-ups are realistic.
  */
 export async function seedDemo() {
-  if (await User.exists({ email: DEMO_EMAIL })) { logger.info('demo workspace already exists'); return; }
+  const existing = await User.findOne({ email: DEMO_EMAIL }).lean();
+  if (existing) {
+    const tm = await TeamMember.findOne({ userId: existing._id }).setOptions({ crossTenant: true }).lean();
+    if (tm && (await Campaign.exists({ businessId: tm.businessId }))) { logger.info('demo workspace already exists'); return; }
+    // An earlier start died half-way through seeding: clear the partial workspace and seed it again.
+    logger.warn('found an unfinished demo workspace — recreating it');
+    if (tm) {
+      const mongoose = (await import('mongoose')).default;
+      for (const m of Object.values(mongoose.models)) if (m.schema.path('businessId')) await (m as any).deleteMany({ businessId: tm.businessId }).setOptions({ crossTenant: true });
+      await Business.deleteOne({ _id: tm.businessId });
+    }
+    await User.deleteMany({ email: { $in: [DEMO_EMAIL, 'priya.manager@dialstack.dev'] } });
+  }
   const user = await User.create({ email: DEMO_EMAIL, name: 'Abbas Mhowwala', passwordHash: await bcrypt.hash(DEMO_PASSWORD, 10) });
   const business = await Business.create({
     name: 'GlowDesk', industry: 'Salon software', website: 'https://glowdesk.example.com', location: 'Pune, India (serving US & UK)', phone: '+1 512 555 0100',

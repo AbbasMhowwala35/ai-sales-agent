@@ -10,9 +10,12 @@ async function main() {
   await connectDb();
   registerJobHandlers();
   if (process.env.SEED_DEMO === 'true') {
-    const { seedDemo, DEMO_EMAIL, DEMO_PASSWORD } = await import('./services/demo.js');
-    await seedDemo();
-    logger.info(`Demo login: ${DEMO_EMAIL} / ${DEMO_PASSWORD}`);
+    // A failed demo seed (e.g. an outside API refusing) must never stop the app from starting.
+    try {
+      const { seedDemo, DEMO_EMAIL, DEMO_PASSWORD } = await import('./services/demo.js');
+      await seedDemo();
+      logger.info(`Demo login: ${DEMO_EMAIL} / ${DEMO_PASSWORD}`);
+    } catch (e: any) { logger.error({ err: e?.message }, 'demo seed failed — starting without the full demo data'); }
   }
   if (env.RUN_WORKERS) {
     startWorkers();
