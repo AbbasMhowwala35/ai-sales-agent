@@ -63,7 +63,14 @@ export async function dialCall(callId: string, businessId: string, ignoreWindow 
     await Call.updateOne({ businessId, _id: callId }, { providerCallId });
   } catch (e: any) {
     logger.warn({ callId, err: e.message }, 'dial failed');
-    await finalizeCall(callId, businessId, { result: 'failed', endReason: `Provider error: ${e.message?.slice(0, 200)}` });
+    const msg = String(e.message ?? '');
+    // Explain the common Twilio refusals in plain words (the phone never rang in these cases).
+    const reason = /trial account/i.test(msg) ? 'Twilio refused the call: trial accounts can’t run AI calls (only Twilio’s demo scripts, and only within the trial number’s country). Upgrade the Twilio account to pay-as-you-go to make AI calls.'
+      : /21219|not verified|unverified/i.test(msg) ? 'Twilio refused the call: on a trial account the number you call must be verified in Twilio (Phone Numbers → Verified Caller IDs).'
+      : /21215|geo.?permission|international permissions/i.test(msg) ? 'Twilio refused the call: calling this country isn’t enabled. Turn it on in Twilio → Voice → Settings → Geo permissions.'
+      : /21212|21210|invalid.*from|caller id/i.test(msg) ? 'Twilio refused the call: the caller number isn’t a Twilio number on this account. Check TWILIO_FROM_NUMBER and your caller IDs.'
+      : `Provider error: ${msg.slice(0, 200)}`;
+    await finalizeCall(callId, businessId, { result: 'failed', endReason: reason });
   }
 }
 
@@ -246,6 +253,8 @@ async function deriveOutcome(businessId: string, lead: any, call: any, result: s
   const tz = (await import('./compliance.js')).leadTimezone(lead, 'Asia/Kolkata');
   await Lead.updateOne({ businessId, _id: lead._id }, { lastAgentId: call.agentId, ...(call.campaignId ? { campaignId: call.campaignId } : {}) });
   if (call.optOut || st?.optOut) return setOutcome(businessId, lead._id, 'do_not_call', 'Asked not to be called', null);
+  // The call never reached the phone (provider refused it): that says nothing about the prospect — don't label them.
+  if (result === 'failed') return;
   if (result !== 'answered') {
     if (['meeting', 'callback', 'nurture', 'interested'].includes(lead.outcome)) return; // keep the stronger signal
     return setOutcome(businessId, lead._id, result === 'busy' ? 'busy' : 'no_answer', result === 'busy' ? 'Line busy — retrying' : 'No answer — retrying');
