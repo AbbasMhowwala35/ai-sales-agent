@@ -23,7 +23,7 @@ export async function crawlWebsite(startUrl: string, maxPages = 10) {
     try {
       const res = await fetchWithRetry(next, { headers: { 'user-agent': 'AISalesAgentBot/1.0 (+knowledge-import)', accept: 'text/html' }, timeoutMs: 15000, redirect: 'follow' }, 1);
       if (!res.ok || !(res.headers.get('content-type') ?? '').includes('text/html')) continue;
-      const html = (await res.text()).slice(0, 2_000_000);
+      const html = (await res.text()).slice(0, 800_000);
       const { title, text, links } = htmlToText(html);
       if (text.length > 50) pages.push({ url: next, title, text });
       for (const l of links) {

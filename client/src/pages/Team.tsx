@@ -4,7 +4,7 @@ import { useApi } from '../lib/useApi';
 import { post, patch, del, qs } from '../lib/api';
 import { useAuth } from '../store/auth';
 import { toast } from '../store/ui';
-import { PageHeader, Panel, Pill, Spinner, Modal, Field, Avatar, Confirm, Tabs, TableSkeleton, Pagination, ErrorState } from '../components/ui';
+import { PageHeader, Panel, Pill, Spinner, Modal, Field, Avatar, Confirm, Tabs, TableSkeleton, Pagination, ErrorState , Pending } from '../components/ui';
 import { fmtDateTime, timeAgo, cap } from '../lib/format';
 
 const PERM_LABEL: Record<string, string> = {
@@ -29,7 +29,7 @@ export default function Team() {
       <Tabs value={tab} onChange={setTab} tabs={[{ id: 'members', label: 'Members', count: data?.members?.length }, { id: 'roles', label: 'Roles' }, ...(can('audit:read') ? [{ id: 'audit' as const, label: 'Audit log' }] : [])]} />
       {error && <ErrorState message={error} onRetry={reload} />}
       {tab === 'members' && <Panel bodyClass="overflow-x-auto">
-        {!data ? <TableSkeleton /> : (
+        {!data ? <Pending error={error} onRetry={reload} /> : (
           <table className="w-full text-sm">
             <thead><tr><th className="th">Member</th><th className="th">Role</th><th className="th">Status</th><th className="th">Last sign-in</th><th className="th" /></tr></thead>
             <tbody>{data.members.map((m: any) => {
@@ -93,10 +93,10 @@ function Invite({ open, onClose, onDone, roles, isOwner }: { open: boolean; onCl
 
 function AuditLog() {
   const [page, setPage] = useState(1);
-  const { data } = useApi<any>(`/compliance/audit${qs({ page, limit: 30 })}`);
+  const { data, error, reload } = useApi<any>(`/compliance/audit${qs({ page, limit: 30 })}`);
   return (
     <Panel bodyClass="overflow-x-auto">
-      {!data ? <TableSkeleton /> : (
+      {!data ? <Pending error={error} onRetry={reload} /> : (
         <table className="w-full text-sm">
           <thead><tr><th className="th">When</th><th className="th">Who</th><th className="th">Action</th><th className="th">Details</th><th className="th">IP</th></tr></thead>
           <tbody>{data.items.map((a: any) => (

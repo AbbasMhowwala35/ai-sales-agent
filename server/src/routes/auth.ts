@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { brandName, ownerFirst } from '../lib/brand.js';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { User, Business, TeamMember, AIAgent } from '../models/index.js';
@@ -19,7 +20,7 @@ const registerSchema = z.object({
   name: z.string().trim().min(2).max(80),
   email: z.email().max(200),
   password,
-  businessName: z.string().trim().min(2).max(120),
+  businessName: z.string().trim().max(120).optional(), // freelancers can leave this empty
   industry: z.string().trim().max(80).optional(),
   website: z.string().trim().max(300).optional(),
 });
@@ -31,14 +32,14 @@ async function sessionFor(userId: string, businessId?: string) {
   const [user, business, businesses] = await Promise.all([
     User.findById(userId).lean(),
     Business.findById(m.businessId).lean(),
-    Business.find({ _id: { $in: memberships.map((x) => x.businessId) } }, { name: 1 }).lean(),
+    Business.find({ _id: { $in: memberships.map((x) => x.businessId) } }, { name: 1, ownerName: 1 }).lean(),
   ]);
   const ctx = { userId: String(userId), businessId: String(m.businessId), role: m.role as any, email: user!.email, name: user!.name };
   return {
     token: signToken(ctx),
     user: { id: ctx.userId, name: ctx.name, email: ctx.email, role: ctx.role, permissions: permissionsFor(ctx.role) },
-    business: { id: String(business!._id), name: business!.name, onboardingComplete: business!.onboardingComplete },
-    businesses: businesses.map((b) => ({ id: String(b._id), name: b.name })),
+    business: { id: String(business!._id), name: brandName(business), onboardingComplete: business!.onboardingComplete },
+    businesses: businesses.map((b) => ({ id: String(b._id), name: brandName(b) })),
   };
 }
 
@@ -46,11 +47,11 @@ authRouter.post('/register', async (req, res) => {
   const body = parse(registerSchema, req.body);
   if (await User.exists({ email: body.email.toLowerCase() })) throw conflict('An account with this email already exists');
   const user = await User.create({ email: body.email, name: body.name, passwordHash: await bcrypt.hash(body.password, 12) });
-  const business = await Business.create({ name: body.businessName, industry: body.industry, website: body.website });
+  const business = await Business.create({ name: body.businessName || undefined, ownerName: body.name, industry: body.industry, website: body.website });
   await TeamMember.create({ businessId: business._id, userId: user._id, role: 'owner' });
   await AIAgent.create({
     businessId: business._id, name: 'Aria', isDefault: true,
-    openingLine: `Hi, this is Aria, an AI assistant calling on behalf of ${business.name}.`,
+    openingLine: business.name ? `Hi, this is Aria, an AI assistant calling on behalf of ${business.name}.` : `Hi, this is Aria — I'm an AI assistant working with ${ownerFirst(business)}.`,
   });
   await syncBusinessProfileKnowledge(business).catch(() => undefined);
   await audit(null, 'auth.register', 'User', user._id, { email: user.email }, business._id);

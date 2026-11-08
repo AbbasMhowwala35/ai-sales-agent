@@ -34,7 +34,7 @@ export async function seedDemo() {
   }
   const user = await User.create({ email: DEMO_EMAIL, name: 'Abbas Mhowwala', passwordHash: await bcrypt.hash(DEMO_PASSWORD, 10) });
   const business = await Business.create({
-    name: 'GlowDesk', industry: 'Salon software', website: 'https://glowdesk.example.com', location: 'Pune, India (serving US & UK)', phone: '+1 512 555 0100',
+    name: 'GlowDesk', ownerName: 'Abbas Mhowwala', industry: 'Salon software', website: 'https://glowdesk.example.com', location: 'Pune, India (serving US & UK)', phone: '+1 512 555 0100',
     description: 'GlowDesk fills empty chairs for hair and beauty salons with online booking, automatic reminders and win-back texts. Salons on GlowDesk typically cut no-shows by 35% and rebook 20% more clients within 60 days.',
     products: [
       { name: 'GlowDesk Booking', description: '24/7 online booking on Instagram, Google and your website, synced with every stylist’s calendar', price: '$79 per month per location' },
@@ -152,6 +152,10 @@ export async function seedDemo() {
   const ngo = await ingestLeads(business.toObject(), ngoRaws, 'sandbox', ngoRun._id, user._id, 'NGO');
   await prioritizeLeads(business.toObject(), ngo.createdIds);
   await Lead.updateMany({ businessId, _id: { $in: ngo.createdIds } }, { approval: 'approved' });
+  // The replayed history is old news: start the bell at zero so only things that happen while you use the app show up as new.
+  const { Notification } = await import('../models/index.js');
+  await Notification.updateMany({ businessId }, { $addToSet: { readBy: { $each: [user._id, mgr._id] } } }).setOptions({ crossTenant: true });
+  await Notification.create({ businessId, type: 'info', title: 'Welcome to your demo workspace', message: 'Two weeks of simulated calls are ready to explore. New notifications appear here as your agent works.', link: '/' });
   await Campaign.updateMany({ businessId, status: { $in: ['active', 'completed'] }, endDate: { $gt: new Date() } }, { status: 'paused', $unset: { completedAt: 1 } });
   logger.info({ email: DEMO_EMAIL, calls: await Call.countDocuments({ businessId }), leads: leads.length }, 'demo workspace seeded');
 }

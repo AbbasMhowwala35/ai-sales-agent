@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { AiAssist } from './AiAssist';
 import { useApi } from '../lib/useApi';
 import { qs } from '../lib/api';
 import { ChevronRight, X } from 'lucide-react';
@@ -149,8 +150,8 @@ export function CampaignFields({ v, set, agents }: { v: any; set: (v: any) => vo
     <div className="grid gap-4 sm:grid-cols-2">
       <Field label="Campaign name"><input className="input" value={v.name} onChange={(e) => set({ ...v, name: e.target.value })} placeholder="e.g. Pune clinics — November" /></Field>
       <Field label="AI agent"><select className="input" value={v.agentId} onChange={(e) => set({ ...v, agentId: e.target.value })}>{agents.map((a) => <option key={a._id} value={a._id}>{a.name}{a.isDefault ? ' (default)' : ''}</option>)}</select></Field>
-      <div className="sm:col-span-2"><Field label="Call objective" hint="Spoken briefly in the opening, e.g. “our new patient reminder service”."><input className="input" value={v.objective} onChange={(e) => set({ ...v, objective: e.target.value })} /></Field></div>
-      <div className="sm:col-span-2"><Field label="Script guidance" hint="Key points the agent should cover on this campaign."><textarea className="input" rows={3} value={v.script} onChange={(e) => set({ ...v, script: e.target.value })} /></Field></div>
+      <div className="sm:col-span-2"><Field label="Call objective" hint="Spoken briefly in the opening, e.g. “our new patient reminder service”."><input className="input" value={v.objective} onChange={(e) => set({ ...v, objective: e.target.value })} /><AiAssist field="objective" context={v.category} value={v.objective ?? ''} onApply={(t) => set({ ...v, objective: t })} /></Field></div>
+      <div className="sm:col-span-2"><Field label="Script guidance" hint="Key points the agent should cover on this campaign."><textarea className="input" rows={3} value={v.script} onChange={(e) => set({ ...v, script: e.target.value })} /><AiAssist field="script" context={v.category} value={v.script ?? ''} onApply={(t) => set({ ...v, script: t })} /></Field></div>
       <p className="sm:col-span-2 text-[13px] text-muted -mb-1">Calling hours are in <span className="font-semibold text-ink">each prospect’s local time</span> — 10:00 means 10 AM in New York for a New York salon and 10 AM in London for a London one.</p>
       <Field label="Calling days" group><div className="flex gap-1">{DAYS.map((d, i) => { const on = s.days.includes(i); return <button type="button" key={d} aria-pressed={on} onClick={() => set({ ...v, schedule: { ...s, days: on ? s.days.filter((x: number) => x !== i) : [...s.days, i].sort() } })} className={cx('h-9 flex-1 rounded-control border text-xs font-semibold', on ? 'bg-signal text-white border-signal' : 'bg-surface border-line')}>{d}</button>; })}</div></Field>
       <div className="grid grid-cols-2 gap-2">

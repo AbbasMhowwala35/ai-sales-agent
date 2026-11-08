@@ -4,7 +4,7 @@ import { Search, PhoneCall, Mic } from 'lucide-react';
 import { ScoreBadge } from '../components/Scorecard';
 import { useApi } from '../lib/useApi';
 import { qs } from '../lib/api';
-import { PageHeader, Panel, Pill, RESULT_TONE, Pagination, Empty, ErrorState, TableSkeleton, cx } from '../components/ui';
+import { PageHeader, Panel, Pill, RESULT_TONE, Pagination, Empty, ErrorState, TableSkeleton, cx , Pending } from '../components/ui';
 import { fmtDateTime, fmtDuration } from '../lib/format';
 
 const SENT_TONE: Record<string, string> = { positive: 'green', neutral: 'grey', negative: 'red' };
@@ -32,7 +32,7 @@ export default function Calls() {
       </div>
       {error && <ErrorState message={error} onRetry={reload} />}
       <Panel bodyClass="overflow-x-auto">
-        {!data ? <TableSkeleton /> : !data.items.length ? <Empty icon={<PhoneCall className="h-7 w-7" />} title={Object.keys(p).length ? 'No calls match these filters' : 'No calls yet'}>{Object.keys(p).length ? 'Try a wider date range or remove a filter.' : 'Calls appear here as soon as a campaign starts dialling.'}</Empty> : (
+        {!data ? <Pending error={error} onRetry={reload} /> : !data.items.length ? <Empty icon={<PhoneCall className="h-7 w-7" />} title={Object.keys(p).length ? 'No calls match these filters' : 'No calls yet'}>{Object.keys(p).length ? 'Try a wider date range or remove a filter.' : 'Calls appear here as soon as a campaign starts dialling.'}</Empty> : (
           <table className="w-full text-sm">
             <thead><tr><th className="th">Lead</th><th className="th">When</th><th className="th">Outcome</th><th className="th text-right">Duration</th><th className="th">Sentiment</th><th className="th" title="How well the agent ran the call, graded like a sales manager would">Call score</th><th className="th">Summary</th><th className="th">Campaign</th></tr></thead>
             <tbody>{data.items.map((c: any) => (

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { brandName } from '../lib/brand.js';
 import { z } from 'zod';
 import { AIAgent, Business, Campaign } from '../models/index.js';
 import { scope } from '../middleware/auth.js';
@@ -126,7 +127,7 @@ agentsRouter.post('/:id/voice-preview', async (req, res) => {
   const voiceId = body.voiceId ?? a.elevenVoiceId;
   if (!elevenEnabled() || !voiceId) return res.status(204).setHeader('x-voice-fallback', 'browser').end();
   const b = await Business.findById(req.tenant!.businessId, { name: 1 }).lean();
-  const audio = await elevenTts(body.text ?? `Hey, it’s ${a.name} from ${b?.name}. Quick heads-up, I’m an AI assistant on the sales team — did I catch you at an okay time?`, voiceId, { speed: a.speakingRate ?? 1 });
+  const audio = await elevenTts(body.text ?? `Hey, it’s ${a.name} from ${brandName(b)}. Quick heads-up, I’m an AI assistant on the sales team — did I catch you at an okay time?`, voiceId, { speed: a.speakingRate ?? 1 });
   res.setHeader('content-type', 'audio/mpeg');
   res.send(audio);
 });

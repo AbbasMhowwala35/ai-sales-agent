@@ -14,6 +14,7 @@ import { Business } from '../models/index.js';
 import { salesProfile, generateSalesProfile, problemMenu } from '../services/agent/playbook.js';
 import { openingMessage } from '../services/agent/engine.js';
 import { logger } from '../lib/logger.js';
+import { notify } from '../services/notifications.js';
 
 /** The agent decides how to pitch each campaign. With an LLM it tailors it once per category; otherwise built-in. */
 function tailorPitch(businessId: unknown, campaignId: unknown) {
@@ -162,6 +163,8 @@ campaignsRouter.post('/:id/:action', requirePermission('campaigns:write'), async
   }
   await c.save();
   await audit(req, `campaign.${action}`, 'Campaign', c._id);
+  if (action === 'start' || action === 'resume') await notify(req.tenant!.businessId, { type: 'info', title: action === 'start' ? 'Campaign started' : 'Campaign resumed', message: `${c.name}${c.research?.enabled ? ' — your agent is finding prospects now' : ''}`, link: `/campaigns/${c._id}` });
+  if (action === 'complete') await notify(req.tenant!.businessId, { type: 'success', title: 'Campaign finished', message: c.name, link: `/campaigns/${c._id}` });
   if (c.status === 'active' && c.research?.enabled && (action === 'start' || action === 'resume')) {
     const { runCampaignResearch } = await import('../services/campaigns/scheduler.js');
     await runCampaignResearch();

@@ -6,7 +6,30 @@ export class ApiError extends Error {
 
 const BASE = import.meta.env.VITE_API_URL ?? '';
 
+/** Free hosting sleeps when idle; the first requests after that fail or hang for up to a minute while it wakes. */
+const WAKE_DELAYS = [1500, 3000, 5000, 8000, 12000, 15000];
+let waking = 0;
+function setWaking(on: boolean) { waking = Math.max(0, waking + (on ? 1 : -1)); window.dispatchEvent(new CustomEvent('server-waking', { detail: waking > 0 })); }
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
 export async function api<T = any>(path: string, opts: { method?: string; body?: any; form?: FormData; signal?: AbortSignal; raw?: boolean } = {}): Promise<T> {
+  const isGet = (opts.method ?? (opts.body || opts.form ? 'POST' : 'GET')) === 'GET';
+  if (!isGet) return request<T>(path, opts);
+  // GETs are safe to repeat: retry quietly while the server is starting up.
+  let flagged = false;
+  try {
+    for (let i = 0; ; i++) {
+      try { return await request<T>(path, opts); } catch (e: any) {
+        const wakeable = e instanceof ApiError && (e.status === 0 || e.status === 502 || e.status === 503 || e.status === 504 || e.code === 'NOT_JSON');
+        if (!wakeable || i >= WAKE_DELAYS.length || opts.signal?.aborted) throw e;
+        if (!flagged) { flagged = true; setWaking(true); }
+        await sleep(WAKE_DELAYS[i]);
+      }
+    }
+  } finally { if (flagged) setWaking(false); }
+}
+
+async function request<T = any>(path: string, opts: { method?: string; body?: any; form?: FormData; signal?: AbortSignal; raw?: boolean } = {}): Promise<T> {
   const token = useAuth.getState().token;
   const headers: Record<string, string> = {};
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -22,7 +45,8 @@ export async function api<T = any>(path: string, opts: { method?: string; body?:
   if (opts.raw) return res as any;
   if (res.status === 204) return undefined as T;
   const text = await res.text();
-  const data = text ? JSON.parse(text) : undefined;
+  let data: any;
+  try { data = text ? JSON.parse(text) : undefined; } catch { throw new ApiError(res.status, res.status >= 500 ? 'The server is starting up — try again in a moment.' : `Unexpected response (${res.status})`, 'NOT_JSON'); }
   if (!res.ok) {
     const err = data?.error ?? {};
     const details = Array.isArray(err.details) ? err.details.map((d: any) => d.message).filter(Boolean).slice(0, 3).join('; ') : '';

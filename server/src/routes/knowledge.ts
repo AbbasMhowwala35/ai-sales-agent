@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { notify } from '../services/notifications.js';
 import multer from 'multer';
 import { z } from 'zod';
 import { BusinessKnowledge, KnowledgeChunk, Business } from '../models/index.js';
@@ -16,7 +17,7 @@ import { getEmbeddings } from '../providers/embeddings/index.js';
 import { getLLM } from '../providers/llm/index.js';
 
 export const knowledgeRouter = Router();
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: env.MAX_UPLOAD_MB * 1024 * 1024, files: 10 } });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: env.MAX_UPLOAD_MB * 1024 * 1024, files: 5 } });
 
 knowledgeRouter.get('/', async (req, res) => {
   const docs = await BusinessKnowledge.find(scope(req)).sort({ system: -1, createdAt: -1 }).lean();
@@ -31,7 +32,7 @@ knowledgeRouter.get('/:id', async (req, res) => {
   res.json({ ...doc, chunks });
 });
 
-knowledgeRouter.post('/upload', requirePermission('knowledge:write'), upload.array('files', 10), async (req, res) => {
+knowledgeRouter.post('/upload', requirePermission('knowledge:write'), upload.array('files', 5), async (req, res) => {
   const files = (req.files as Express.Multer.File[]) ?? [];
   if (!files.length) throw badRequest('Attach at least one file (PDF, DOCX, TXT, MD or CSV)');
   const created: any[] = [];
@@ -117,8 +118,10 @@ export async function processDocumentJob(p: { documentId: string; text?: string 
       text = await extractText(Buffer.concat(chunks), doc.type);
     }
     await indexDocument(job.businessId, doc._id, text);
+    if (!doc.system) await notify(job.businessId, { type: 'success', title: 'Knowledge added', message: `“${doc.title}” is ready — your agent can use it on calls now.`, link: '/knowledge' });
   } catch (e: any) {
     await BusinessKnowledge.updateOne({ businessId: job.businessId, _id: doc._id }, { status: 'failed', error: e.message?.slice(0, 500) });
+    await notify(job.businessId, { type: 'error', title: 'Couldn’t read a document', message: `“${doc.title}”: ${String(e.message ?? '').slice(0, 140)}`, link: '/knowledge' });
   }
 }
 
@@ -130,7 +133,9 @@ export async function websiteJob(p: { documentId: string; url: string; maxPages:
     const pages = await crawlWebsite(p.url, p.maxPages);
     const text = pages.map((pg) => `## ${pg.title || pg.url}\nSource: ${pg.url}\n${pg.text}`).join('\n\n');
     await indexDocument(job.businessId, p.documentId, text);
+    await notify(job.businessId, { type: 'success', title: 'Website imported', message: `${pages.length} page${pages.length === 1 ? '' : 's'} from ${p.url} added to the knowledge base.`, link: '/knowledge' });
   } catch (e: any) {
     await BusinessKnowledge.updateOne({ businessId: job.businessId, _id: p.documentId }, { status: 'failed', error: e.message?.slice(0, 500) });
+    await notify(job.businessId, { type: 'error', title: 'Website import failed', message: `${p.url}: ${String(e.message ?? '').slice(0, 140)}`, link: '/knowledge' });
   }
 }

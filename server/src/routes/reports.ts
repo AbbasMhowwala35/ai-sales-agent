@@ -1,4 +1,5 @@
 import { Router, type Response } from 'express';
+import { brandName } from '../lib/brand.js';
 import { DateTime } from 'luxon';
 import { Business, Campaign, CampaignLead, Call, CallTranscript, Lead } from '../models/index.js';
 import { scope } from '../middleware/auth.js';
@@ -36,7 +37,7 @@ reportsRouter.get('/analytics.pdf', async (req, res) => {
   const tz = b?.compliance?.timezone ?? 'UTC';
   const a = await analytics(req.tenant!.businessId, from, to, tz);
   const s = a.summary;
-  const r = new Report('Sales performance report', `${DateTime.fromJSDate(from).toFormat('d LLL yyyy')} - ${DateTime.fromJSDate(to).toFormat('d LLL yyyy')}`, clean(b?.name));
+  const r = new Report('Sales performance report', `${DateTime.fromJSDate(from).toFormat('d LLL yyyy')} - ${DateTime.fromJSDate(to).toFormat('d LLL yyyy')}`, clean(brandName(b)));
   r.section('Headline numbers');
   r.kpis([
     { label: 'Leads discovered', value: s.leadsDiscovered, sub: `${s.qualifiedLeads} qualified` },
@@ -78,7 +79,7 @@ reportsRouter.get('/campaigns/:id.pdf', async (req, res) => {
   const cls = await CampaignLead.find({ ...scope(req), campaignId: c._id }).populate(tp('leadId', 'companyName contactName phoneMasked outcome outcomeNote followUpAt location score temperature')).lean();
   const calls = await Call.find({ ...scope(req), campaignId: c._id }, { result: 1, durationSec: 1, appointmentId: 1, 'qualification.interested': 1 }).lean();
   const answered = calls.filter((x) => x.result === 'answered');
-  const r = new Report(clean(c.name), `Campaign report · ${clean(c.status)} · agent ${clean((c.agentId as any)?.name ?? '')}`, clean(b?.name));
+  const r = new Report(clean(c.name), `Campaign report · ${clean(c.status)} · agent ${clean((c.agentId as any)?.name ?? '')}`, clean(brandName(b)));
   r.kpis([
     { label: 'Leads in campaign', value: cls.length },
     { label: 'Calls placed', value: calls.length },
@@ -108,7 +109,7 @@ reportsRouter.get('/leads.pdf', async (req, res) => {
   const b = await Business.findById(req.tenant!.businessId, { name: 1, compliance: 1 }).lean();
   const leads = await Lead.find(f).sort({ score: -1 }).limit(2000);
   const title = q.outcome ? `Leads: ${q.outcome.split(',').map((o) => OUTCOME_LABEL[o] ?? o).join(', ')}` : 'Leads report';
-  const r = new Report(title, `${leads.length} leads · ${DateTime.now().toFormat('d LLL yyyy')}`, clean(b?.name));
+  const r = new Report(title, `${leads.length} leads · ${DateTime.now().toFormat('d LLL yyyy')}`, clean(brandName(b)));
   r.table([
     { key: 'company', label: 'Company', width: 22 }, { key: 'contact', label: 'Contact', width: 17 }, { key: 'phone', label: 'Phone', width: 14 },
     { key: 'where', label: 'Location', width: 13 }, { key: 'score', label: 'Fit', width: 6, align: 'right' },
@@ -125,7 +126,7 @@ reportsRouter.get('/leads.pdf', async (req, res) => {
 reportsRouter.get('/follow-ups.pdf', async (req, res) => {
   const b = await Business.findById(req.tenant!.businessId, { name: 1, compliance: 1 }).lean();
   const leads = await Lead.find({ ...scope(req), outcome: { $in: ['meeting', 'callback', 'nurture', 'interested'] } }).sort({ followUpAt: 1 }).limit(2000);
-  const r = new Report('Follow-up schedule', 'Meetings, callbacks and "not now" prospects, in date order', clean(b?.name));
+  const r = new Report('Follow-up schedule', 'Meetings, callbacks and "not now" prospects, in date order', clean(brandName(b)));
   r.table([
     { key: 'when', label: 'When (their local time)', width: 22 }, { key: 'company', label: 'Company', width: 22 }, { key: 'contact', label: 'Contact', width: 18 },
     { key: 'outcome', label: 'Type', width: 16, color: (x) => OUTCOME_COLOR[x.raw] }, { key: 'note', label: 'Note', width: 26 },
@@ -142,7 +143,7 @@ reportsRouter.get('/calls/:id.pdf', async (req, res) => {
   const b = await Business.findById(req.tenant!.businessId, { name: 1 }).lean();
   const t = c.transcriptId ? await CallTranscript.findOne({ ...scope(req), _id: c.transcriptId }).lean() : null;
   const lead: any = c.leadId ?? {};
-  const r = new Report(`Call with ${clean(lead.companyName ?? 'lead')}`, `${d(c.createdAt)} · ${dur(c.durationSec)} · ${clean(c.result ?? c.status)}`, clean(b?.name));
+  const r = new Report(`Call with ${clean(lead.companyName ?? 'lead')}`, `${d(c.createdAt)} · ${dur(c.durationSec)} · ${clean(c.result ?? c.status)}`, clean(brandName(b)));
   r.kpis([
     { label: 'Contact', value: clean(lead.contactName ?? '-'), sub: clean(lead.designation ?? '') },
     { label: 'Outcome', value: clean(c.result ?? '-'), sub: c.optOut ? 'Opted out' : undefined },

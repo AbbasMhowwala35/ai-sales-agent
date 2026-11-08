@@ -1,5 +1,18 @@
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid, BarChart, Bar, Cell, Legend } from 'recharts';
+import { BarChart3 } from 'lucide-react';
 import { useUI } from '../store/ui';
+
+/** What a chart shows when there's nothing to plot yet — a clear message, not empty axes. */
+export function ChartEmpty({ height = 180, title = 'No data yet', hint }: { height?: number; title?: string; hint?: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center text-center rounded-control border border-dashed border-line" style={{ minHeight: height }}>
+      <BarChart3 className="h-6 w-6 text-muted/70 mb-2" aria-hidden />
+      <p className="font-semibold text-[14px]">{title}</p>
+      {hint && <p className="text-[13px] text-muted mt-1 max-w-[36ch]">{hint}</p>}
+    </div>
+  );
+}
+const allZero = (rows: any[], keys: string[]) => !rows?.length || rows.every((r) => keys.every((k) => !Number(r?.[k])));
 
 export function useChartColors() {
   const dark = useUI((s) => s.dark);
@@ -13,6 +26,7 @@ const dayLabel = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('en
 
 export function ActivityChart({ data, height = 260 }: { data: any[]; height?: number }) {
   const c = useChartColors();
+  if (allZero(data, ['total', 'answered', 'interested'])) return <ChartEmpty height={height} title="No calls in this period" hint="Calls will show up here once a campaign starts dialling." />;
   return (
     <ResponsiveContainer width="100%" height={height}>
       <AreaChart data={data} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
@@ -31,6 +45,7 @@ export function ActivityChart({ data, height = 260 }: { data: any[]; height?: nu
 
 export function LeadsChart({ data, height = 220 }: { data: any[]; height?: number }) {
   const c = useChartColors();
+  if (allZero(data, ['leads'])) return <ChartEmpty height={height} title="No leads found in this period" hint="Run lead discovery or import a CSV to see new leads here." />;
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
@@ -47,6 +62,7 @@ export function LeadsChart({ data, height = 220 }: { data: any[]; height?: numbe
 export function HBars({ data, colors, height }: { data: { name: string; value: number }[]; colors?: string[]; height?: number }) {
   const c = useChartColors();
   const pal = colors ?? [c.signal, c.hot, c.cold, c.danger, c.warm];
+  if (allZero(data, ['value'])) return <ChartEmpty height={120} title="Nothing to show yet" />;
   return (
     <ResponsiveContainer width="100%" height={height ?? Math.max(120, data.length * 38)}>
       <BarChart data={data} layout="vertical" margin={{ top: 0, right: 24, left: 8, bottom: 0 }}>
@@ -64,6 +80,7 @@ export function HBars({ data, colors, height }: { data: { name: string; value: n
 /** Pipeline funnel drawn as proportional bars — reads better than a pie for ordered stages. */
 export function Funnel({ stages }: { stages: { stage: string; count: number; label: string }[] }) {
   const max = Math.max(1, ...stages.map((s) => s.count));
+  if (stages.every((s) => !s.count)) return <ChartEmpty height={140} title="Your pipeline is empty" hint="Leads move through these stages as your agent finds, calls and books them." />;
   return (
     <ol className="space-y-2.5">
       {stages.map((s) => (

@@ -7,9 +7,11 @@ import { useAuth } from '../store/auth';
 import { toast } from '../store/ui';
 import { PageHeader, Panel, Field, Tabs, TagInput, Toggle, Spinner, ErrorState, Skeleton, Pill, Pagination } from '../components/ui';
 import { fmtDate } from '../lib/format';
+import { AiAssist } from '../components/AiAssist';
 
 type Tab = 'profile' | 'offer' | 'icp' | 'priorities' | 'faq' | 'qualification' | 'compliance';
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const CURRENCIES: [string, string][] = [['USD', 'US dollar'], ['GBP', 'British pound'], ['EUR', 'Euro'], ['INR', 'Indian rupee'], ['AUD', 'Australian dollar'], ['CAD', 'Canadian dollar'], ['AED', 'UAE dirham'], ['SGD', 'Singapore dollar'], ['NZD', 'New Zealand dollar'], ['SAR', 'Saudi riyal'], ['ZAR', 'South African rand'], ['JPY', 'Japanese yen'], ['CHF', 'Swiss franc'], ['SEK', 'Swedish krona'], ['MYR', 'Malaysian ringgit'], ['PKR', 'Pakistani rupee'], ['BDT', 'Bangladeshi taka'], ['NGN', 'Nigerian naira'], ['BRL', 'Brazilian real'], ['MXN', 'Mexican peso']];
 const SIZES = ['1-10', '11-50', '51-200', '201-500', '501-1000', '1000+'];
 
 export default function Settings() {
@@ -44,7 +46,7 @@ export default function Settings() {
   ];
   const input = (path: string, props: any = {}) => {
     const v = path.split('.').reduce((o, k) => o?.[k], b) ?? '';
-    return props.rows ? <textarea className="input" rows={props.rows} value={v} disabled={!canEdit} onChange={(e) => set(path, e.target.value)} placeholder={props.placeholder} />
+    return props.rows ? <><textarea className="input" rows={props.rows} value={v} disabled={!canEdit} onChange={(e) => set(path, e.target.value)} placeholder={props.placeholder} />{props.assist && <AiAssist field={props.assist} context={props.context} value={v} onApply={(t) => set(path, t)} disabled={!canEdit} />}</>
       : <input className="input" type={props.type ?? 'text'} value={v} disabled={!canEdit} onChange={(e) => set(path, props.type === 'number' ? (e.target.value === '' ? '' : Number(e.target.value)) : e.target.value)} placeholder={props.placeholder} min={props.min} max={props.max} />;
   };
 
@@ -58,14 +60,14 @@ export default function Settings() {
       {tab === 'profile' && (
         <Panel>
           <div className="grid gap-5 md:grid-cols-2">
-            <Field label="Business name">{input('name')}</Field>
+            <Field label="Business name (optional)" hint={b.name?.trim() ? undefined : `No business name: your agent says “I work with ${(b.ownerName || 'you').split(' ')[0]}” and books meetings with you directly.`}>{input('name', { placeholder: 'Leave blank if you’re a freelancer' })}</Field>
             <Field label="Industry">{input('industry', { placeholder: 'e.g. Healthcare software' })}</Field>
             <Field label="Website">{input('website', { placeholder: 'https://' })}</Field>
             <Field label="Location">{input('location', { placeholder: 'City, Country' })}</Field>
             <Field label="Business phone">{input('phone', { placeholder: '+91 …' })}</Field>
             <Field label="Human transfer number" hint="Calls are transferred here when a prospect asks for a person.">{input('transferNumber', { placeholder: '+91 …' })}</Field>
-            <div className="md:col-span-2"><Field label="About the business" hint="The first sentence is used as your agent’s elevator pitch.">{input('description', { rows: 4, placeholder: 'What you do, for whom, and why it matters.' })}</Field></div>
-            <div className="md:col-span-2"><Field label="Business goals">{input('goals', { rows: 2, placeholder: 'e.g. Book 40 demos per month with clinics in Maharashtra' })}</Field></div>
+            <div className="md:col-span-2"><Field label="About the business" hint="The first sentence is used as your agent’s elevator pitch.">{input('description', { rows: 4, assist: 'description', placeholder: 'What you do, for whom, and why it matters.' })}</Field></div>
+            <div className="md:col-span-2"><Field label="Business goals">{input('goals', { rows: 2, assist: 'goals', placeholder: 'e.g. Book 40 demos per month with clinics in Maharashtra' })}</Field></div>
           </div>
         </Panel>
       )}
@@ -80,7 +82,7 @@ export default function Settings() {
                   <div key={i} className="rounded-control border border-line p-3 space-y-2">
                     <div className="flex gap-2">{input(`${k}.${i}.name`, { placeholder: 'Name' })}<div className="w-36">{input(`${k}.${i}.price`, { placeholder: 'Price' })}</div>
                       {canEdit && <button className="btn-ghost h-9 w-9 p-0 shrink-0" aria-label="Remove" onClick={() => set(k, b[k].filter((_: any, j: number) => j !== i))}><Trash2 className="h-4 w-4" /></button>}</div>
-                    {input(`${k}.${i}.description`, { rows: 2, placeholder: 'What it is and the problem it solves' })}
+                    {input(`${k}.${i}.description`, { rows: 2, assist: 'product', context: b[k][i]?.name, placeholder: 'What it is and the problem it solves' })}
                   </div>
                 ))}
               </div>
@@ -92,20 +94,20 @@ export default function Settings() {
       {tab === 'icp' && (
         <Panel>
           <div className="grid gap-5 md:grid-cols-2">
-            <div className="md:col-span-2"><Field label="Target audience">{input('targetAudience', { rows: 2, placeholder: 'e.g. Independent clinics and diagnostic labs with 2–20 doctors' })}</Field></div>
+            <div className="md:col-span-2"><Field label="Target audience">{input('targetAudience', { rows: 2, assist: 'audience', placeholder: 'e.g. Independent clinics and diagnostic labs with 2–20 doctors' })}</Field></div>
             <Field label="Target industries" hint="Used for discovery and worth 25 points in the fit score."><TagInput value={b.icp?.industries ?? []} onChange={(v) => set('icp.industries', v)} placeholder="Retail, Healthcare…" /></Field>
             <Field label="Decision-maker roles"><TagInput value={b.icp?.roles ?? []} onChange={(v) => set('icp.roles', v)} placeholder="Founder, Operations Head…" /></Field>
             <Field label="Search keywords" hint="What your ideal customers call themselves or need."><TagInput value={b.icp?.keywords ?? []} onChange={(v) => set('icp.keywords', v)} placeholder="dental clinic, crm…" /></Field>
             <Field label="Target locations"><TagInput value={b.targetLocations ?? []} onChange={(v) => set('targetLocations', v)} placeholder="Mumbai, India" /></Field>
-            <Field label="Company sizes">
+            <Field label="Company sizes" group>
               <div className="flex flex-wrap gap-2">{SIZES.map((s) => { const on = b.icp?.companySizes?.includes(s); return <button key={s} type="button" disabled={!canEdit} onClick={() => set('icp.companySizes', on ? b.icp.companySizes.filter((x: string) => x !== s) : [...(b.icp?.companySizes ?? []), s])} className={`h-8 px-3 rounded-full border text-[13px] font-medium ${on ? 'bg-signal text-white border-signal' : 'border-line bg-surface hover:bg-sunken'}`}>{s}</button>; })}</div>
             </Field>
             <div className="grid grid-cols-[1fr_1fr_90px] gap-2">
               <Field label="Budget from">{input('icp.budgetMin', { type: 'number', min: 0 })}</Field>
               <Field label="Budget to">{input('icp.budgetMax', { type: 'number', min: 0 })}</Field>
-              <Field label="Currency">{input('icp.currency')}</Field>
+              <Field label="Currency"><select className="input" disabled={!canEdit} value={b.icp?.currency ?? 'USD'} onChange={(e) => set('icp.currency', e.target.value)}>{CURRENCIES.map(([code, name]) => <option key={code} value={code}>{code} — {name}</option>)}</select></Field>
             </div>
-            <div className="md:col-span-2"><Field label="Typical requirements">{input('icp.requirements', { rows: 3, placeholder: 'What a good-fit customer usually needs' })}</Field></div>
+            <div className="md:col-span-2"><Field label="Typical requirements">{input('icp.requirements', { rows: 3, assist: 'requirements', placeholder: 'What a good-fit customer usually needs' })}</Field></div>
           </div>
         </Panel>
       )}
@@ -120,7 +122,7 @@ export default function Settings() {
               {b.faqs?.map((_: any, i: number) => (
                 <div key={i} className="rounded-control border border-line p-3 space-y-2">
                   <div className="flex gap-2">{input(`faqs.${i}.question`, { placeholder: 'Question' })}{canEdit && <button className="btn-ghost h-9 w-9 p-0 shrink-0" aria-label="Remove FAQ" onClick={() => set('faqs', b.faqs.filter((_: any, j: number) => j !== i))}><Trash2 className="h-4 w-4" /></button>}</div>
-                  {input(`faqs.${i}.answer`, { rows: 2, placeholder: 'Answer' })}
+                  {input(`faqs.${i}.answer`, { rows: 2, assist: 'faq_answer', context: b.faqs[i]?.question, placeholder: 'Answer' })}
                 </div>
               ))}
             </div>
@@ -131,7 +133,7 @@ export default function Settings() {
               {b.salesScripts?.map((_: any, i: number) => (
                 <div key={i} className="rounded-control border border-line p-3 space-y-2">
                   <div className="flex gap-2">{input(`salesScripts.${i}.name`, { placeholder: 'Script name' })}{canEdit && <button className="btn-ghost h-9 w-9 p-0 shrink-0" aria-label="Remove script" onClick={() => set('salesScripts', b.salesScripts.filter((_: any, j: number) => j !== i))}><Trash2 className="h-4 w-4" /></button>}</div>
-                  {input(`salesScripts.${i}.content`, { rows: 5 })}
+                  {input(`salesScripts.${i}.content`, { rows: 5, assist: 'script' })}
                 </div>
               ))}
             </div>
@@ -173,7 +175,7 @@ function Compliance({ b, set, input, canEdit }: any) {
             <Field label="End">{input('compliance.callingWindowEnd', { type: 'time' })}</Field>
           </div>
           <Field label="Timezone">{input('compliance.timezone')}</Field>
-          <Field label="Calling days">
+          <Field label="Calling days" group>
             <div className="flex gap-1.5">{DAYS.map((d, i) => { const on = (c.callingDays ?? []).includes(i); return <button type="button" key={d} disabled={!canEdit} onClick={() => set('compliance.callingDays', on ? c.callingDays.filter((x: number) => x !== i) : [...(c.callingDays ?? []), i].sort())} className={`h-9 w-11 rounded-control border text-[13px] font-semibold ${on ? 'bg-signal text-white border-signal' : 'bg-surface border-line'}`} aria-pressed={on}>{d}</button>; })}</div>
           </Field>
           <Field label="Max attempts per lead (rolling 7 days)">{input('compliance.maxAttemptsPerLead', { type: 'number', min: 1, max: 10 })}</Field>

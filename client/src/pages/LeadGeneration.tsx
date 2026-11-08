@@ -5,7 +5,7 @@ import { useApi } from '../lib/useApi';
 import { post, upload, download } from '../lib/api';
 import { useAuth } from '../store/auth';
 import { toast } from '../store/ui';
-import { PageHeader, Panel, Field, TagInput, Spinner, Pill, STATUS_TONE, Empty, TableSkeleton, Toggle, cx } from '../components/ui';
+import { PageHeader, Panel, Field, TagInput, Spinner, Pill, STATUS_TONE, Empty, TableSkeleton, Toggle, cx , Pending } from '../components/ui';
 import { fmtDateTime, sourceLabel } from '../lib/format';
 
 export default function LeadGeneration() {
@@ -65,7 +65,7 @@ export default function LeadGeneration() {
         <CsvImport onDone={runs.reload} disabled={!can} />
       </div>
       <Panel title="Discovery history" className="mt-6" bodyClass="overflow-x-auto">
-        {!runs.data ? <TableSkeleton /> : !runs.data.runs.length ? <Empty icon={<Radar className="h-7 w-7" />} title="No discovery runs yet">Start your first run above — it usually finishes in under a minute.</Empty> : (
+        {!runs.data ? <Pending error={runs.error} onRetry={runs.reload} /> : !runs.data.runs.length ? <Empty icon={<Radar className="h-7 w-7" />} title="No discovery runs yet">Start your first run above — it usually finishes in under a minute.</Empty> : (
           <table className="w-full text-sm">
             <thead><tr><th className="th">Started</th><th className="th">Source</th><th className="th">Search</th><th className="th">Status</th><th className="th text-right">Found</th><th className="th text-right">New</th><th className="th text-right">Duplicates</th><th className="th text-right">Skipped</th><th className="th" /></tr></thead>
             <tbody>

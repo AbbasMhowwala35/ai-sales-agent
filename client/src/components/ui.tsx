@@ -98,6 +98,11 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
 export function Skeleton({ className }: { className?: string }) {
   return <div className={cx('animate-pulse rounded-control bg-sunken', className)} />;
 }
+/** Loading placeholder that turns into an error with Retry if the request failed — never an endless shimmer. */
+export function Pending({ error, onRetry, rows }: { error?: string; onRetry?: () => void; rows?: number }) {
+  return error ? <ErrorState message={error} onRetry={onRetry} /> : <TableSkeleton rows={rows} />;
+}
+
 export function TableSkeleton({ rows = 6 }: { rows?: number }) {
   return <div className="p-4 space-y-3">{Array.from({ length: rows }, (_, i) => <Skeleton key={i} className="h-9" />)}</div>;
 }
@@ -224,15 +229,19 @@ export function TagInput({ value, onChange, placeholder }: { value: string[]; on
   );
 }
 
-export function Toggle({ checked, onChange, label, description }: { checked: boolean; onChange: (v: boolean) => void; label: string; description?: string }) {
+/** On/off switch. The knob is laid out inside the track (flex), so it can never drift or slide out of place. */
+export function Toggle({ checked, onChange, label, description, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; description?: string; disabled?: boolean }) {
   return (
-    <label className="flex items-start justify-between gap-4 cursor-pointer py-1">
-      <span><span className="font-semibold block">{label}</span>{description && <span className="text-muted text-[13px]">{description}</span>}</span>
-      <button type="button" role="switch" aria-checked={checked} onClick={() => onChange(!checked)}
-        className={cx('relative shrink-0 h-6 w-10 rounded-full transition-colors', checked ? 'bg-signal' : 'bg-line')}>
-        <span className={cx('absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform', checked ? 'translate-x-[18px]' : 'translate-x-0.5')} />
+    <div className={cx('flex items-start justify-between gap-4 py-1', disabled && 'opacity-60')}>
+      <span className="min-w-0 cursor-pointer select-none" onClick={() => !disabled && onChange(!checked)}>
+        <span className="font-semibold block">{label}</span>{description && <span className="text-muted text-[13px] block">{description}</span>}
+      </span>
+      <button type="button" role="switch" aria-checked={checked} aria-label={label} disabled={disabled} onClick={() => onChange(!checked)}
+        className={cx('shrink-0 inline-flex items-center h-6 w-11 p-0.5 rounded-full transition-colors duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal mt-0.5',
+          checked ? 'bg-signal justify-end' : 'bg-line justify-start')}>
+        <span aria-hidden className="block h-5 w-5 rounded-full bg-white shadow-sm" />
       </button>
-    </label>
+    </div>
   );
 }
 

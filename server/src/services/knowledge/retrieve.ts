@@ -15,7 +15,7 @@ export async function retrieve(businessId: unknown, query: string, k = 4, minSco
   const emb = getEmbeddings();
   const [qv] = await emb.embed([query]);
   const qTokens = new Set(tokenize(query));
-  const cursor = KnowledgeChunk.find({ businessId: new Types.ObjectId(String(businessId)), embeddingModel: emb.model }, { text: 1, embedding: 1, documentId: 1, title: 1 }).lean().cursor({ batchSize: 500 });
+  const cursor = KnowledgeChunk.find({ businessId: new Types.ObjectId(String(businessId)), embeddingModel: emb.model }, { text: 1, embedding: 1, documentId: 1, title: 1 }).lean().cursor({ batchSize: 200 });
   const top: RetrievedChunk[] = [];
   for await (const c of cursor as any) {
     const vec = cosine(qv, c.embedding);
