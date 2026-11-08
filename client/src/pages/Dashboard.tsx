@@ -60,12 +60,12 @@ function TodoCard({ to, icon: Icon, count, title, hint, tone }: { to: string; ic
 export default function Dashboard() {
   const user = useAuth((s) => s.user);
   const a = useApi<any>('/analytics');
-  const outcomes = useApi<any>('/leads/outcomes', { poll: 20000 });
+  const outcomes = useApi<any>('/leads/outcomes', { poll: 60000 });
   const pending = useApi<any>('/leads?approval=pending&limit=1');
   const appts = useApi<any>('/calls/appointments');
   const followUps = useApi<any>('/leads?outcome=callback,nurture,meeting&sort=followUpAt&upcoming=true&limit=6');
-  const calls = useApi<any>('/calls?limit=6', { poll: 10000 });
-  const camps = useApi<any>('/campaigns', { poll: 15000 });
+  const calls = useApi<any>('/calls?limit=6', { poll: 30000 });
+  const camps = useApi<any>('/campaigns', { poll: 60000 });
   const s = a.data?.summary;
   const oc = outcomes.data?.counts ?? {};
   const live = calls.data?.items?.filter((c: any) => c.status !== 'ended').length ?? 0;

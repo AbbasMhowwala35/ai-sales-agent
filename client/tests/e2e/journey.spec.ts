@@ -5,7 +5,7 @@ const owner = { name: 'Riya Kapoor', email: `riya.${uid}@e2e.test`, password: 'P
 
 async function login(page: Page, email: string, password: string) {
   await page.goto('/login');
-  await page.getByLabel('Work email').fill(email);
+  await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password').fill(password);
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
@@ -16,7 +16,7 @@ test.describe.serial('new business: setup → knowledge → leads → campaign',
     await page.goto('/register');
     await page.getByLabel('Your name').fill(owner.name);
     await page.getByLabel('Business name').fill(owner.business);
-    await page.getByLabel('Work email').fill(owner.email);
+    await page.getByLabel('Email').fill(owner.email);
     await page.getByLabel('Password').fill('short');
     await page.getByRole('button', { name: 'Create workspace' }).click();
     await expect(page.getByRole('alert')).toContainText(/8 characters|letter|number/);
@@ -32,7 +32,7 @@ test.describe.serial('new business: setup → knowledge → leads → campaign',
     await page.getByLabel('Industry').fill('Dental software');
     await page.getByLabel('About the business').fill('Smile Dental helps dental clinics fill their chairs with automated recall reminders and online booking.');
     await page.getByRole('button', { name: 'Save changes' }).click();
-    await expect(page.getByText(/Business settings saved/).last()).toBeVisible();
+    await expect(page.getByText(/^Saved\./).last()).toBeVisible();
 
     await page.getByRole('tab', { name: 'Ideal customer' }).click();
     const industries = page.locator('label', { hasText: 'Target industries' }).getByRole('textbox');
@@ -42,14 +42,14 @@ test.describe.serial('new business: setup → knowledge → leads → campaign',
     const kws = page.locator('label', { hasText: 'Search keywords' }).getByRole('textbox');
     await kws.fill('dental clinic'); await kws.press('Enter');
     await page.getByRole('button', { name: 'Save changes' }).click();
-    await expect(page.getByText(/Business settings saved/).last()).toBeVisible();
+    await expect(page.getByText(/^Saved\./).last()).toBeVisible();
 
     await page.getByRole('tab', { name: 'FAQs & scripts' }).click();
     await page.getByRole('button', { name: 'Add FAQ' }).click();
     await page.getByPlaceholder('Question').fill('What does Smile Dental cost?');
     await page.getByPlaceholder('Answer').fill('Smile Dental costs 1999 rupees per chair per month.');
     await page.getByRole('button', { name: 'Save changes' }).click();
-    await expect(page.getByText(/Business settings saved/).last()).toBeVisible();
+    await expect(page.getByText(/^Saved\./).last()).toBeVisible();
   });
 
   test('knowledge base answers from FAQs and new notes', async ({ page }) => {
@@ -184,7 +184,7 @@ test('dashboard, analytics and dark mode', async ({ page }) => {
 test('unauthenticated users are redirected to sign in; bad credentials show an error', async ({ page }) => {
   await page.goto('/leads');
   await expect(page).toHaveURL(/\/login/);
-  await page.getByLabel('Work email').fill('demo@dialstack.dev');
+  await page.getByLabel('Email').fill('demo@dialstack.dev');
   await page.getByLabel('Password').fill('wrong-password1');
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page.getByRole('alert')).toHaveText('Invalid email or password');

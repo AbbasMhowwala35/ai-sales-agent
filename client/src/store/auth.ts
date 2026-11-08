@@ -13,7 +13,7 @@ interface AuthState extends Partial<Session> {
   can: (perm: string) => boolean;
 }
 export const useAuth = create<AuthState>()(persist((set, get) => ({
-  setSession: (s) => set(s),
-  logout: () => set({ token: undefined, user: undefined, business: undefined, businesses: undefined }),
+  setSession: (s) => { window.dispatchEvent(new Event('api-mutated')); set(s); }, // new account/workspace → drop cached data
+  logout: () => { window.dispatchEvent(new Event('api-mutated')); set({ token: undefined, user: undefined, business: undefined, businesses: undefined }); },
   can: (perm) => !!get().user?.permissions.includes(perm),
 }), { name: 'dialstack-session', partialize: (s) => ({ token: s.token, user: s.user, business: s.business, businesses: s.businesses }) }));

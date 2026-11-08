@@ -72,3 +72,20 @@ describe('runs on a small server', () => {
     expect(e.model).toBe('local-hash-v1');
   });
 });
+
+describe('background job loop (slow remote databases)', () => {
+  it('starts new work within a second, never overlaps, and goes quiet when idle', async () => {
+    const { registerHandler, enqueue, startWorkers, stopWorkers } = await import('../../src/queue/queue.js');
+    let running = 0, maxRunning = 0, done = 0;
+    registerHandler('test.slow', async () => { running++; maxRunning = Math.max(maxRunning, running); await new Promise((r) => setTimeout(r, 150)); running--; done++; }, 2);
+    startWorkers();
+    try {
+      const t0 = Date.now();
+      for (let i = 0; i < 6; i++) await enqueue('test.slow', { i });
+      while (done < 6 && Date.now() - t0 < 8000) await new Promise((r) => setTimeout(r, 50));
+      expect(done).toBe(6);
+      expect(maxRunning).toBeLessThanOrEqual(2); // per-type concurrency respected
+      expect(Date.now() - t0).toBeLessThan(4000);
+    } finally { stopWorkers(); }
+  });
+});

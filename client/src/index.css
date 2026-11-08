@@ -44,3 +44,8 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline: non
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 @keyframes pulse-ring { 0% { box-shadow: 0 0 0 0 rgb(var(--signal) / .5); } 100% { box-shadow: 0 0 0 8px rgb(var(--signal) / 0); } }
 .live-dot { animation: pulse-ring 1.4s ease-out infinite; }
+
+/* Sign-in sample call: each line fades up once as it appears. */
+@keyframes auth-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.auth-in { animation: auth-in .35s ease-out both; }
+@media (prefers-reduced-motion: reduce) { .auth-in { animation: none; } }

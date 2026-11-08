@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, Sparkles, CalendarClock, PhoneOff, Ban, PhoneForwarded, ShieldCheck } from 'lucide-react';
 import { useApi } from '../lib/useApi';
@@ -14,7 +15,10 @@ const INTENT_TONE: Record<string, string> = { high: 'green', medium: 'amber', lo
 
 export default function CallDetail() {
   const { id } = useParams();
-  const { data: c, error, reload } = useApi<any>(`/calls/${id}`, { poll: 3000 });
+  // Refresh only while the call is live or still being analysed; a finished call never changes.
+  const [active, setActive] = useState(true);
+  const { data: c, error, reload } = useApi<any>(`/calls/${id}`, { poll: active ? 4000 : 0 });
+  useEffect(() => { if (c) setActive(c.status !== 'ended' || c.analysisStatus === 'pending'); }, [c]);
   const can = useAuth((s) => s.can('calls:write'));
   if (error) return <ErrorState message={error} onRetry={reload} />;
   if (!c) return <Skeleton className="h-[520px]" />;

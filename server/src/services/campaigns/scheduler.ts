@@ -94,11 +94,18 @@ async function fireReminders(now: Date) {
 }
 
 let timer: NodeJS.Timeout | null = null;
+/** Never overlaps: the next tick is scheduled only after this one finishes (slow remote DBs can take seconds). */
+let schedRunning = false;
 export function startScheduler(ms: number) {
   if (timer) return;
-  timer = setInterval(() => void schedulerTick().catch((e) => logger.error(e, 'scheduler')), ms);
+  const loop = async () => {
+    if (schedRunning) return;
+    schedRunning = true;
+    try { await schedulerTick(); } catch (e) { logger.error(e, 'scheduler'); } finally { schedRunning = false; if (timer) timer = setTimeout(loop, ms); }
+  };
+  timer = setTimeout(loop, Math.min(ms, 5_000));
 }
-export function stopScheduler() { if (timer) clearInterval(timer); timer = null; }
+export function stopScheduler() { if (timer) clearTimeout(timer); timer = null; }
 
 /**
  * Follow-up dispatcher: prospects who asked for a callback at a time, or said “not now — try me in N months”,

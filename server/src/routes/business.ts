@@ -85,7 +85,9 @@ businessRouter.patch('/', requirePermission('business:write'), async (req, res) 
   if (qualification) b.set('qualification', { ...(b.toObject().qualification ?? {}), ...qualification });
   if (compliance) b.set('compliance', { ...(b.toObject().compliance ?? {}), ...compliance });
   await b.save();
-  await syncBusinessProfileKnowledge(b);
+  // Re-index the agent's knowledge only when profile content changed (not for calling rules, priorities, etc.).
+  const KNOWLEDGE_FIELDS = ['name', 'ownerName', 'description', 'products', 'services', 'faqs', 'salesScripts', 'targetAudience', 'industry', 'website', 'location', 'goals', 'icp'];
+  if (Object.keys(body).some((k) => KNOWLEDGE_FIELDS.includes(k))) await syncBusinessProfileKnowledge(b);
   if (body.priorityRules) {
     const { enqueue } = await import('../queue/queue.js');
     await enqueue('leads.prioritize', { all: true }, { businessId: b._id, uniqueKey: `prio:${b._id}` });

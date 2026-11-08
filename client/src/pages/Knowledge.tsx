@@ -14,7 +14,7 @@ const TYPE_LABEL: Record<string, string> = { pdf: 'PDF', docx: 'Word', txt: 'Tex
 export default function Knowledge() {
   const can = useAuth((s) => s.can('knowledge:write'));
   const [busy, setBusy] = useState(false);
-  const { data, error, reload } = useApi<any>('/knowledge', { poll: busy ? 2000 : 0 }); // poll while processing
+  const { data, error, reload } = useApi<any>('/knowledge', { poll: busy ? 4000 : 0 }); // poll while processing
   const live = data;
   const nowBusy = !!data?.documents?.some((d: any) => ['pending', 'processing'].includes(d.status));
   if (nowBusy !== busy) setBusy(nowBusy);

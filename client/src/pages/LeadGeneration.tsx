@@ -13,7 +13,7 @@ export default function LeadGeneration() {
   const providers = useApi<any>('/lead-generation/providers');
   const preview = useApi<any>('/lead-generation/preview-query');
   const [running, setRunning] = useState(false);
-  const runs = useApi<any>('/lead-generation/runs', { poll: running ? 2000 : 0 });
+  const runs = useApi<any>('/lead-generation/runs', { poll: running ? 4000 : 0 });
   const nowRunning = !!runs.data?.runs?.some((r: any) => ['queued', 'running'].includes(r.status));
   if (nowRunning !== running) setRunning(nowRunning);
   const [q, setQ] = useState<any>(null);

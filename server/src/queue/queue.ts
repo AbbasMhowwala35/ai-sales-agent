@@ -30,7 +30,7 @@ export async function enqueue(
   opts: { businessId?: unknown; runAt?: Date; maxAttempts?: number; uniqueKey?: string } = {},
 ) {
   try {
-    return await Job.create({
+    const job = await Job.create({
       type,
       payload,
       businessId: opts.businessId,
@@ -38,6 +38,8 @@ export async function enqueue(
       maxAttempts: opts.maxAttempts ?? 3,
       uniqueKey: opts.uniqueKey,
     });
+    if (!opts.runAt || opts.runAt.getTime() <= Date.now()) kick();
+    return job;
   } catch (e: any) {
     if (e?.code === 11000 && opts.uniqueKey) return null; // already queued
     throw e;
@@ -63,10 +65,8 @@ async function claim(type: string) {
   );
 }
 
-async function runOne(type: string, reg: Registered) {
-  const job = await claim(type);
-  if (!job) return false;
-  reg.running++;
+/** Run one claimed job to completion and record the result. */
+async function execute(type: string, reg: Registered, job: any) {
   try {
     await reg.handler(job.payload, { id: String(job._id), attempts: job.attempts, businessId: job.businessId ? String(job.businessId) : undefined });
     await Job.updateOne({ _id: job._id }, { $set: { status: 'completed', completedAt: new Date(), lockedAt: null } });
@@ -83,11 +83,19 @@ async function runOne(type: string, reg: Registered) {
           lockedAt: null,
         },
       },
-    );
-  } finally {
-    reg.running--;
+    ).catch(() => undefined);
   }
-  return true;
+}
+
+/** Claim + run one job of a type, awaiting completion (tests and drain()). */
+async function runOne(type: string, reg: Registered) {
+  reg.running++;
+  try {
+    const job = await claim(type);
+    if (!job) return false;
+    await execute(type, reg, job);
+    return true;
+  } finally { reg.running--; }
 }
 
 /** Process available jobs once (used by tests and the poll loop). Resolves when no more claimable work. */
@@ -101,27 +109,70 @@ export async function drain(maxRounds = 200) {
   }
 }
 
-async function tick() {
+/*
+ * Poll loop, built for small servers with a remote database (e.g. 0.1 CPU on Render + MongoDB Atlas):
+ *  - never overlaps: a new round only starts after the previous one finished
+ *  - a slot is reserved BEFORE the claim query, so slow queries can't fan out into a flood of claims
+ *  - one cheap query asks "which job types have work?" — idle cost is a single query every few seconds
+ *  - fast while there is work, backs off to IDLE_MAX_MS when idle; enqueue() in this process wakes it at once
+ */
+const IDLE_MAX_MS = 5_000;
+let ticking = false;
+let idleDelay = env.QUEUE_POLL_MS;
+
+function schedule(ms: number) {
   if (stopping) return;
-  for (const [type, reg] of handlers) {
-    while (reg.running < reg.concurrency) {
-      // fire-and-forget; each runOne claims at most one job
-      const p = runOne(type, reg);
-      const got = await Promise.race([p, new Promise((r) => setTimeout(() => r('pending'), 50))]);
-      if (got === false) break;
+  if (timer) clearTimeout(timer);
+  timer = setTimeout(() => void tick(), ms);
+}
+/** Wake the loop soon (new work was enqueued, or a job finished and freed a slot). */
+export function kick() { if (!stopping && timer && !ticking) { idleDelay = env.QUEUE_POLL_MS; schedule(50); } }
+
+async function claimAndStart(type: string, reg: Registered) {
+  reg.running++; // reserve the slot first
+  let job: any;
+  try { job = await claim(type); } catch (e) { reg.running--; throw e; }
+  if (!job) { reg.running--; return false; }
+  void execute(type, reg, job).finally(() => { reg.running--; kick(); });
+  return true;
+}
+
+async function tick() {
+  if (stopping || ticking) return;
+  ticking = true;
+  let found = false;
+  try {
+    const now = new Date();
+    const ready = new Set<string>(await Job.distinct('type', {
+      type: { $in: [...handlers.keys()] },
+      $or: [{ status: 'queued', runAt: { $lte: now } }, { status: 'running', lockedAt: { $lt: new Date(now.getTime() - LOCK_TIMEOUT_MS) } }],
+    }));
+    for (const type of ready) {
+      const reg = handlers.get(type)!;
+      while (!stopping && reg.running < reg.concurrency) {
+        if (!(await claimAndStart(type, reg))) break;
+        found = true;
+      }
     }
+  } catch (e) {
+    logger.error(e, 'queue tick');
+  } finally {
+    ticking = false;
+    idleDelay = found ? env.QUEUE_POLL_MS : Math.min(IDLE_MAX_MS, Math.round(idleDelay * 1.6));
+    schedule(found ? 250 : idleDelay);
   }
 }
 
 export function startWorkers() {
   if (timer) return;
   stopping = false;
-  timer = setInterval(() => void tick().catch((e) => logger.error(e, 'queue tick')), env.QUEUE_POLL_MS);
+  idleDelay = env.QUEUE_POLL_MS;
+  schedule(env.QUEUE_POLL_MS);
   logger.info({ workerId, types: [...handlers.keys()] }, 'queue workers started');
 }
 
 export function stopWorkers() {
   stopping = true;
-  if (timer) clearInterval(timer);
+  if (timer) clearTimeout(timer);
   timer = null;
 }

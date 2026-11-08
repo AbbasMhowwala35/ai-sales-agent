@@ -17,7 +17,7 @@ export default function Calls() {
   useEffect(() => { const t = setTimeout(() => { if ((p.search ?? '') !== search) setParams({ ...p, search, page: '1' }); }, 350); return () => clearTimeout(t); /* eslint-disable-next-line */ }, [search]);
   const camps = useApi<any>('/campaigns');
   const path = `/calls${qs({ ...p, page, limit: 25, from: p.from ? new Date(p.from + 'T00:00:00').toISOString() : undefined, to: p.to ? new Date(p.to + 'T23:59:59').toISOString() : undefined })}`;
-  const { data, error, reload } = useApi<any>(path, { poll: 10000 });
+  const { data, error, reload } = useApi<any>(path, { poll: 30000 });
   const up = (k: string, v?: string) => { const n: any = { ...p, page: '1' }; if (v) n[k] = v; else delete n[k]; setParams(n); };
   return (
     <>

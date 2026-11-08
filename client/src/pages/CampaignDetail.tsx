@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { ArrowLeft, Play, Pause, Square, Pencil, UserMinus, Radar, MessageSquareQuote, ChevronDown } from 'lucide-react';
 import { OutcomeBadge, OutcomeBar, OUTCOMES, OUTCOME_ORDER, PdfButton, localTime } from '../components/Outcome';
@@ -19,7 +19,10 @@ const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 export default function CampaignDetail() {
   const { id } = useParams();
-  const { data: c, error, reload } = useApi<any>(`/campaigns/${id}`, { poll: 4000 });
+  // Refresh only while the campaign is running.
+  const [running, setRunning] = useState(false);
+  const { data: c, error, reload } = useApi<any>(`/campaigns/${id}`, { poll: running ? 20000 : 0 });
+  useEffect(() => { if (c) setRunning(c.status === 'active'); }, [c]);
   const can = useAuth((s) => s.can('campaigns:write'));
   const [edit, setEdit] = useState<any>(null);
   const [confirm, setConfirm] = useState<'complete' | 'delete' | null>(null);
