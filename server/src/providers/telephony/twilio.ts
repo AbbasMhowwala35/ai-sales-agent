@@ -1,3 +1,4 @@
+import { logger } from '../../lib/logger.js';
 import crypto from 'node:crypto';
 import { env } from '../../config/env.js';
 import { fetchWithRetry, jsonOrThrow } from '../http.js';
@@ -21,6 +22,10 @@ export async function twilioApi(path: string, params: Record<string, string>) {
  *   /webhooks/twilio/gather/:callId → SpeechResult → AI engine → <Say> reply + <Gather> | <Dial> | <Hangup>
  * Twilio performs STT (Gather speech) and TTS (<Say> with Amazon Polly / Google voices).
  */
+/** Set after Twilio reports a trial account; those calls skip options trials don't allow. */
+let trialMode = false;
+const TRIAL_BLOCKED = ['MachineDetection', 'Record', 'RecordingChannels', 'RecordingStatusCallback'];
+
 export const twilio: TelephonyProvider = {
   id: 'twilio',
   async dial(req: DialRequest) {
@@ -44,7 +49,20 @@ export const twilio: TelephonyProvider = {
       body.append('RecordingChannels', 'dual');
       body.append('RecordingStatusCallback', `${hook}/recording/${req.callId}`);
     }
-    const res = await fetchWithRetry(`${base()}/Calls.json`, { method: 'POST', headers: { authorization: auth(), 'content-type': 'application/x-www-form-urlencoded' }, body });
+    // Trial accounts reject some options (answering-machine detection, recording settings). If Twilio says so,
+    // retry once with only the basics and remember it, so later calls skip the extras.
+    if (trialMode) for (const k of TRIAL_BLOCKED) body.delete(k);
+    const send = (b: URLSearchParams) => fetchWithRetry(`${base()}/Calls.json`, { method: 'POST', headers: { authorization: auth(), 'content-type': 'application/x-www-form-urlencoded' }, body: b });
+    let res = await send(body);
+    if (res.status === 400 && !trialMode) {
+      const text = await res.clone().text();
+      if (/trial account/i.test(text)) {
+        trialMode = true;
+        logger.warn('Twilio trial account: calling without answering-machine detection and Twilio-side recording');
+        for (const k of TRIAL_BLOCKED) body.delete(k);
+        res = await send(body);
+      }
+    }
     const data = await jsonOrThrow(res, 'Twilio');
     return { providerCallId: data.sid };
   },
