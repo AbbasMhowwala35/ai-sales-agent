@@ -8,7 +8,8 @@ services:
     runtime: node
     plan: free
     buildCommand: npm ci --include=dev && npm run build
-    startCommand: cd server && node dist/index.js
+    # 512 MB instances: let the heap use ~384 MB (Node would otherwise stop near ~256 MB) and keep it compact.
+    startCommand: cd server && node --max-old-space-size=384 --optimize-for-size dist/index.js
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV

@@ -59,7 +59,9 @@ const schema = z.object({
 
   // Storage
   STORAGE_DIR: z.string().default('./storage'),
-  MAX_UPLOAD_MB: z.coerce.number().default(15),
+  MAX_UPLOAD_MB: z.coerce.number().default(10),
+  /** Max characters indexed per knowledge document — keeps memory bounded on small (512 MB) hosts. */
+  MAX_DOC_CHARS: z.coerce.number().default(250_000),
 
   // Workers
   RUN_WORKERS: bool(true),

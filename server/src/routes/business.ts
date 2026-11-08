@@ -15,7 +15,8 @@ const item = z.object({ name: z.string().trim().min(1).max(200), description: s(
 const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use HH:MM (24h)');
 
 export const businessUpdateSchema = z.object({
-  name: z.string().trim().min(2).max(120).optional(),
+  name: z.string().trim().max(120).optional(), // empty = freelancer (agent speaks for the owner)
+  ownerName: z.string().trim().max(80).optional(),
   industry: s(120), website: s(300), location: s(200), description: s(5000), phone: s(30),
   products: z.array(item).max(100).optional(),
   services: z.array(item).max(100).optional(),
@@ -79,6 +80,7 @@ businessRouter.patch('/', requirePermission('business:write'), async (req, res) 
   if (rest.callerIds) rest.callerIds = rest.callerIds.map((c) => ({ ...c, number: toE164(c.number)! }));
   if (followUps) b.set('followUps', { ...(b.toObject().followUps ?? {}), ...followUps });
   b.set(rest);
+  if (!b.ownerName) b.set('ownerName', req.auth!.name); // older accounts: needed when the business name is left empty
   if (icp) b.set('icp', { ...(b.toObject().icp ?? {}), ...icp });
   if (qualification) b.set('qualification', { ...(b.toObject().qualification ?? {}), ...qualification });
   if (compliance) b.set('compliance', { ...(b.toObject().compliance ?? {}), ...compliance });

@@ -5,7 +5,7 @@ import { useApi } from '../lib/useApi';
 import { post, patch, qs, api } from '../lib/api';
 import { useAuth } from '../store/auth';
 import { toast } from '../store/ui';
-import { PageHeader, Panel, Pill, TempPill, ScoreBar, Spinner, Modal, Field, Pagination, Empty, ErrorState, TableSkeleton, Tabs, Confirm, STATUS_TONE, cx } from '../components/ui';
+import { PageHeader, Panel, Pill, TempPill, ScoreBar, Spinner, Modal, Field, Pagination, Empty, ErrorState, TableSkeleton, Tabs, Confirm, STATUS_TONE, cx , Pending } from '../components/ui';
 import { STAGES, STAGE_LABELS, sourceLabel, timeAgo } from '../lib/format';
 import { OutcomeBadge, OUTCOMES, PdfButton, PriorityBadge, localTime, type OutcomeKey } from '../components/Outcome';
 import { BriefDrawer } from '../components/BriefDrawer';
@@ -111,7 +111,7 @@ export default function Leads() {
       {error && <ErrorState message={error} onRetry={reload} />}
       {view === 'board' ? <Board items={items} loading={loading && !data} onMoved={reload} /> : (
         <Panel bodyClass="overflow-x-auto">
-          {!data ? <TableSkeleton /> : !items.length ? (
+          {!data ? <Pending error={error} onRetry={reload} /> : !items.length ? (
             <Empty icon={<Users className="h-7 w-7" />} title={p.search || p.temperature || p.status ? 'No leads match these filters' : 'No leads yet'} action={!p.search && <Link className="btn-primary" to="/lead-generation">Find leads</Link>}>
               {p.search || p.temperature || p.status ? 'Try removing a filter.' : 'Run lead discovery or import a CSV to fill your pipeline.'}
             </Empty>

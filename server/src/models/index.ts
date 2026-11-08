@@ -33,7 +33,9 @@ export const User = model('User', userSchema);
 /* ----------------------------- Businesses ---------------------------- */
 const businessSchema = new Schema(
   {
-    name: { type: String, required: true, trim: true },
+    name: { type: String, trim: true }, // optional — freelancers may not have one
+    /** The account owner's name: the agent speaks for them when there's no business name. */
+    ownerName: { type: String, trim: true },
     industry: String,
     website: String,
     location: String,

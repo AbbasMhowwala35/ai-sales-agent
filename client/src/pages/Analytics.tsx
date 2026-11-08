@@ -4,7 +4,7 @@ import { qs } from '../lib/api';
 import { PdfButton } from '../components/Outcome';
 import { PageHeader, Panel, ErrorState, Skeleton, Empty } from '../components/ui';
 import { Stat, StatRow } from '../components/Stat';
-import { ActivityChart, LeadsChart, HBars, Funnel, useChartColors } from '../components/charts';
+import { ActivityChart, LeadsChart, HBars, Funnel, useChartColors, ChartEmpty } from '../components/charts';
 import { fmtDuration, fmtNum, STAGE_LABELS, sourceLabel } from '../lib/format';
 
 const RANGES = [{ d: 7, l: '7 days' }, { d: 30, l: '30 days' }, { d: 90, l: '90 days' }];
@@ -48,7 +48,7 @@ export default function Analytics() {
           <Panel title="Call outcomes"><HBars data={data.callOutcomes} colors={[c.signal, c.hot, c.cold, c.danger]} /></Panel>
           <Panel title="Customer sentiment"><HBars data={data.sentiment} colors={[c.signal, c.cold, c.danger]} /></Panel>
           <Panel title="Lead temperature"><HBars data={data.temperature} colors={[c.hot, c.warm, c.cold]} /></Panel>
-          <Panel title="Lead sources">{data.sources.length ? <HBars data={data.sources.map((x: any) => ({ ...x, name: sourceLabel(x.name) }))} /> : <p className="text-muted">No leads in this range.</p>}</Panel>
+          <Panel title="Lead sources">{data.sources.length ? <HBars data={data.sources.map((x: any) => ({ ...x, name: sourceLabel(x.name) }))} /> : <ChartEmpty height={120} title="No leads in this period" />}</Panel>
         </div>
         <Panel title="Pipeline (all time)" className="mt-6"><Funnel stages={data.funnel.map((f: any) => ({ ...f, label: STAGE_LABELS[f.stage] }))} /></Panel>
         <Panel title="Campaign performance" className="mt-6" bodyClass="overflow-x-auto">

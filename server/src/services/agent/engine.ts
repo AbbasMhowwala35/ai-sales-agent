@@ -1,4 +1,5 @@
 import { getLLM, safeJson, type ChatMessage } from '../../providers/llm/index.js';
+import { brandName, isSolo, ownerFirst } from '../../lib/brand.js';
 import { retrieve, extractiveAnswer } from '../knowledge/retrieve.js';
 import { detectIntents, extractBudget, extractTimeline, parseMeetingTime, formatMeetingTime, parseFollowUp, timeParts } from './nlu.js';
 import { tokenize } from '../../providers/embeddings/index.js';
@@ -94,8 +95,8 @@ export function openingMessage(ctx: EngineContext) {
   const name = firstName(lead?.contactName);
   const me = agent?.name ?? 'Aria';
   let intro = agent?.openingLine
-    ? agent.openingLine.replace(/\{\{\s*name\s*\}\}/g, name).replace(/\{\{\s*company\s*\}\}/g, lead?.companyName ?? '').replace(/\{\{\s*business\s*\}\}/g, business.name).replace(/\s+,/g, ',')
-    : `Hey${name ? ' ' + name : ''}, it’s ${me} from ${business.name}.`;
+    ? agent.openingLine.replace(/\{\{\s*name\s*\}\}/g, name).replace(/\{\{\s*company\s*\}\}/g, lead?.companyName ?? '').replace(/\{\{\s*business\s*\}\}/g, brandName(business)).replace(/\s+,/g, ',')
+    : isSolo(business) ? `Hey${name ? ' ' + name : ''}, it’s ${me} — I work with ${ownerFirst(business)}.` : `Hey${name ? ' ' + name : ''}, it’s ${me} from ${business.name}.`;
   const recorded = business?.compliance?.recordCalls !== false;
   if (!DISCLOSURE_RE.test(intro)) intro = `${intro.replace(/\s*$/, '')} Quick heads-up, I’m an AI assistant${recorded ? ', and this call’s recorded' : ''}.`;
   const rec = recorded && !/recorded/i.test(intro) ? ' This call’s recorded.' : '';
@@ -143,7 +144,7 @@ function captureSlots(state: ConversationState, text: string, i: ReturnType<type
 }
 
 const closingAsk = (ctx: EngineContext, s: ConversationState) => pick(s, [
-  `Honestly, from what you’re telling me, this is exactly what we fix. Easiest next step is a quick 15-minute call with one of our specialists — they’ll show you how it’d work for ${ctx.lead?.companyName ?? 'you'}. What does your week look like?`,
+  `Honestly, from what you’re telling me, this is exactly what we fix. Easiest next step is a quick 15-minute call with ${isSolo(ctx.business) ? ownerFirst(ctx.business) : 'one of our specialists'} — they’ll show you how it’d work for ${ctx.lead?.companyName ?? 'you'}. What does your week look like?`,
   `I think there’s a real fit here. Let’s get you 15 minutes with a specialist so you can see it on your own numbers — what day works best this week?`,
 ]);
 
@@ -192,7 +193,7 @@ function painToOffer(ctx: EngineContext, state: ConversationState, text: string,
 function bookReply(ctx: EngineContext, state: ConversationState, at: Date, kind: 'meeting' | 'callback', zone: string) {
   const when = formatMeetingTime(at, zone);
   state.slots.meetingAt = at.toISOString(); state.slots.meetingKind = kind;
-  const who = state.slots.meetingWith === 'owner' ? `our founder` : 'one of our specialists';
+  const who = isSolo(ctx.business) ? ownerFirst(ctx.business) : state.slots.meetingWith === 'owner' ? `our founder` : 'one of our specialists';
   if (kind === 'callback') { state.stage = 'ended'; return { reply: `Perfect — I’ll give you a ring ${when}. Talk then!`, end: true, actions: [{ type: 'book' as const, at, kind, display: when }] }; }
   state.stage = 'wrapup'; state.lastAsk = 'anything_else';
   return { reply: `Perfect — you’re booked with ${who} for ${when}, on Google Meet. I’ll send the invite and link to your email. Anything you’d like them to know beforehand?`, actions: [{ type: 'book' as const, at, kind, display: when, with: state.slots.meetingWith ?? 'specialist' }] };
@@ -236,7 +237,7 @@ async function ruleTurn(ctx: EngineContext, state: ConversationState, text: stri
     const at = parts.hasDay && parts.hasHour ? parseMeetingTime(text, zone) : undefined;
     if (at) return bookReply(ctx, state, at, 'meeting', zone);
     state.stage = 'scheduling'; state.schedulingKind = 'meeting'; state.lastAsk = 'time';
-    return { reply: `Absolutely — I’ll set up a Google Meet with our founder directly. What day and time work best for you?` };
+    return { reply: `Absolutely — I’ll set up a Google Meet with ${isSolo(ctx.business) ? ownerFirst(ctx.business) : 'our founder'} directly. What day and time work best for you?` };
   }
 
   // ---- A concrete time anywhere in the call = they’re agreeing to meet (or to a callback if that’s what we asked) ----
@@ -469,7 +470,7 @@ function handleObjection(ctx: EngineContext, state: ConversationState, kind: Obj
       return formal(ctx) ? `It is, yes — I won’t pretend otherwise. Give me 30 seconds, and if it isn’t relevant, just say so. Fair?` : `Ha — it is, I won’t pretend otherwise. Give me 30 seconds, and if it’s not relevant you can tell me to get lost. Fair?`;
     case 'who_is_this':
       state.lastAsk = 'permission';
-      return `It’s ${ctx.agent?.name ?? 'Aria'}, an AI assistant with ${ctx.business.name} — ${prof.reason}. Got 30 seconds?`;
+      return `It’s ${ctx.agent?.name ?? 'Aria'}, an AI assistant ${isSolo(ctx.business) ? `working with ${ownerFirst(ctx.business)}` : `with ${ctx.business.name}`} — ${prof.reason}. Got 30 seconds?`;
     case 'send_info': {
       toDiscovery();
       if (state.slots.pain || prof.pains.length < 2) { state.stage = 'closing'; state.lastAsk = 'meeting_offer'; return `Happy to send it over. Honestly though, an email can’t show it on your own setup — would 15 minutes ${d1} or ${d2} be easier?`; }
@@ -504,7 +505,7 @@ function handleObjection(ctx: EngineContext, state: ConversationState, kind: Obj
 export function systemPrompt(ctx: EngineContext, state: ConversationState, knowledge: string) {
   const { business: b, agent: a, lead, campaign } = ctx;
   const offer = [...(b.products ?? []), ...(b.services ?? [])].map((p: any) => `${p.name}${p.price ? ` (${p.price})` : ''}: ${p.description ?? ''}`).join('; ');
-  return `You are ${a?.name ?? 'Aria'}, ${a?.title ?? 'Senior Account Executive'} at ${b.name}, on a live PHONE call.
+  return `You are ${a?.name ?? 'Aria'}, ${isSolo(b) ? `an AI sales assistant working for ${b.ownerName ?? 'a freelancer'} (a freelancer — say "${ownerFirst(b)}" or "I", never invent a company name)` : `${a?.title ?? 'Senior Account Executive'} at ${b.name}`}, on a live PHONE call.
 Background (shapes HOW you sell — never recite it as a personal claim): ${a?.experience ?? 'a seasoned B2B closer'}.
 You know exactly what you sell: ${b.description ?? ''} Offer: ${offer || 'see KNOWLEDGE'}. Ideal customer: ${b.targetAudience ?? 'n/a'}.
 Objective: ${campaign?.objective ?? a?.objective ?? 'qualify and book a 15-minute meeting with a specialist'}.
@@ -568,7 +569,7 @@ export async function respond(ctx: EngineContext, prev: ConversationState, utter
   }
   if (i.asksIfAI) {
     const cont = state.stage === 'consent' ? ' Do you have a quick minute?' : ' Happy to keep going if that’s okay?';
-    return done(`${pick(state, ['Ha, good catch —', 'Yep —', 'I am, yes —'])} I’m an AI assistant on the ${ctx.business.name} sales team. Anything we set up goes to a real specialist.${cont}`);
+    return done(`${pick(state, ['Ha, good catch —', 'Yep —', 'I am, yes —'])} I’m an AI assistant ${isSolo(ctx.business) ? `working with ${ownerFirst(ctx.business)}. Anything we set up goes straight to ${ownerFirst(ctx.business)}.` : `on the ${ctx.business.name} sales team. Anything we set up goes to a real specialist.`}${cont}`);
   }
   const maxTurns = Math.max(6, (ctx.agent?.maxCallMinutes ?? 8) * 3);
   if (state.turns > maxTurns) { state.endReason = 'max_duration'; return done(`I’ve taken enough of your time — I’ll send the details over by email. Thanks so much!`, true); }

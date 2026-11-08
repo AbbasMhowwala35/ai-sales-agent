@@ -6,7 +6,7 @@ import { runSimulatedCall } from './services/calls/simulate.js';
 import { analyzeCall } from './services/calls/analysis.js';
 
 export function registerJobHandlers() {
-  registerHandler('knowledge.process', (p, j) => processDocumentJob(p, j), 2);
+  registerHandler('knowledge.process', (p, j) => processDocumentJob(p, j), 1); // one at a time: PDFs are memory-heavy
   registerHandler('knowledge.website', (p, j) => websiteJob(p, j), 1);
   registerHandler('leads.discover', (p, j) => discoverJob(p, j), 2);
   registerHandler('leads.prioritize', async (p, j) => {
@@ -19,7 +19,7 @@ export function registerJobHandlers() {
     await prioritizeLeads(b, ids);
   }, 2);
   registerHandler('calls.dial', (p, j) => dialCall(p.callId, j.businessId!, p.ignoreWindow), 10);
-  registerHandler('calls.simulate', (p, j) => runSimulatedCall(p.callId, j.businessId!), 10);
+  registerHandler('calls.simulate', (p, j) => runSimulatedCall(p.callId, j.businessId!), 5);
   registerHandler('calls.analyze', (p, j) => analyzeCall(p.callId, j.businessId!), 3);
   registerHandler('recordings.download', (p, j) => downloadRecording(p.recordingId, j.businessId!), 2);
 }

@@ -117,7 +117,7 @@ export default function Dashboard() {
 
       <div className="grid gap-6 lg:grid-cols-[1fr_380px] mt-6">
         <Panel title="Calling activity" actions={<Link to="/analytics" className="text-[13px] text-signal font-semibold">See analytics</Link>}>
-          {a.data ? <ActivityChart data={a.data.daily} /> : <Skeleton className="h-[260px]" />}
+          {a.data ? <ActivityChart data={a.data.daily} /> : a.error ? <ErrorState message={a.error} onRetry={a.reload} /> : <Skeleton className="h-[260px]" />}
         </Panel>
         <Panel title="What prospects told us">
           {!totalOutcomes ? <p className="text-muted text-[13px]">Once your agent has conversations, you’ll see here what each prospect wants.</p> : <>

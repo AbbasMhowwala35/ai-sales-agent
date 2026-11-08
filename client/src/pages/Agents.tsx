@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { AiAssist } from '../components/AiAssist';
 import { Plus, Trash2, Star, RotateCcw, Send, CalendarCheck, PhoneForwarded, Ban, Play, Square, Mic, Upload, Volume2, VolumeX, Clock3, XCircle, Info } from 'lucide-react';
 import { useApi } from '../lib/useApi';
 import { post, patch, del, upload, api } from '../lib/api';
@@ -103,8 +104,8 @@ export default function Agents() {
               </Field>
               <Field label="Language"><select className="input" value={draft.language} onChange={(e) => set('language', e.target.value)}>{LANGS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select></Field>
               <div className="md:col-span-2"><Field label="Goal of every call"><input className="input" value={draft.objective ?? ''} onChange={(e) => set('objective', e.target.value)} /></Field></div>
-              <div className="md:col-span-2"><Field label="Opening line" hint="Use {{name}}, {{company}}, {{business}}. A one-line “I’m an AI assistant” note is added if it isn’t there."><textarea className="input" rows={2} value={draft.openingLine ?? ''} onChange={(e) => set('openingLine', e.target.value)} placeholder="Hey {{name}}, it’s Sarah from {{business}}." /></Field></div>
-              <div className="md:col-span-2"><Field label="Extra instructions" hint="Used when an OpenAI key is configured."><textarea className="input" rows={2} value={draft.instructions ?? ''} onChange={(e) => set('instructions', e.target.value)} placeholder="e.g. Always mention the 14-day free trial. Never discuss competitor pricing." /></Field></div>
+              <div className="md:col-span-2"><Field label="Opening line" hint="Use {{name}}, {{company}}, {{business}}. A one-line “I’m an AI assistant” note is added if it isn’t there."><textarea className="input" rows={2} value={draft.openingLine ?? ''} onChange={(e) => set('openingLine', e.target.value)} placeholder="Hey {{name}}, it’s Sarah from {{business}}." /><AiAssist field="opening_line" value={draft.openingLine ?? ''} onApply={(t) => set('openingLine', t)} disabled={!can} /></Field></div>
+              <div className="md:col-span-2"><Field label="Extra instructions" hint="Used when an OpenAI key is configured."><textarea className="input" rows={2} value={draft.instructions ?? ''} onChange={(e) => set('instructions', e.target.value)} placeholder="e.g. Always mention the 14-day free trial. Never discuss competitor pricing." /><AiAssist field="instructions" value={draft.instructions ?? ''} onApply={(t) => set('instructions', t)} disabled={!can} /></Field></div>
               <Field label="Transfer to a human"><input className="input" value={draft.transferNumber ?? ''} onChange={(e) => set('transferNumber', e.target.value)} placeholder="+1 …" /></Field>
               <Field label="Max call length (minutes)"><input className="input" type="number" min={1} max={30} value={draft.maxCallMinutes ?? 8} onChange={(e) => set('maxCallMinutes', Number(e.target.value))} /></Field>
             </fieldset>
@@ -118,7 +119,7 @@ export default function Agents() {
               {draft.objectionHandling?.map((o: any, i: number) => (
                 <div key={i} className="rounded-control border border-line p-3 grid gap-2 md:grid-cols-[1fr_1.6fr_auto] items-start">
                   <Field label="When they say"><input className="input" disabled={!can} value={o.objection} onChange={(e) => set('objectionHandling', draft.objectionHandling.map((x: any, j: number) => j === i ? { ...x, objection: e.target.value } : x))} /></Field>
-                  <Field label="Respond with"><textarea className="input" disabled={!can} rows={3} value={o.response} onChange={(e) => set('objectionHandling', draft.objectionHandling.map((x: any, j: number) => j === i ? { ...x, response: e.target.value } : x))} /></Field>
+                  <Field label="Respond with"><textarea className="input" disabled={!can} rows={3} value={o.response} onChange={(e) => set('objectionHandling', draft.objectionHandling.map((x: any, j: number) => j === i ? { ...x, response: e.target.value } : x))} /><AiAssist field="objection_response" context={o.objection} value={o.response ?? ''} onApply={(t) => set('objectionHandling', draft.objectionHandling.map((x: any, j: number) => j === i ? { ...x, response: t } : x))} disabled={!can} /></Field>
                   {can && <button className="btn-ghost h-9 w-9 p-0 mt-6" aria-label="Remove objection" onClick={() => set('objectionHandling', draft.objectionHandling.filter((_: any, j: number) => j !== i))}><Trash2 className="h-4 w-4" /></button>}
                 </div>
               ))}

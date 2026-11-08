@@ -51,7 +51,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
       <form onSubmit={submit} className="space-y-4" noValidate>
         {mode === 'register' && <>
           <Field label="Your name"><input className="input" value={f.name} onChange={on('name')} autoComplete="name" required /></Field>
-          <Field label="Business name"><input className="input" value={f.businessName} onChange={on('businessName')} autoComplete="organization" required /></Field>
+          <Field label="Business name (optional)" hint="Freelancer? Leave it blank — your agent will introduce itself as working with you, by first name."><input className="input" value={f.businessName} onChange={on('businessName')} autoComplete="organization" placeholder="e.g. GlowDesk" /></Field>
           <Field label="Website" hint="Optional — you can import it into the knowledge base later."><input className="input" value={f.website} onChange={on('website')} placeholder="https://" /></Field>
         </>}
         <Field label="Work email"><input className="input" type="email" value={f.email} onChange={on('email')} autoComplete="email" required /></Field>

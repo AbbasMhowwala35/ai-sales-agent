@@ -1,4 +1,5 @@
 import { DateTime } from 'luxon';
+import { speakAs } from '../../lib/brand.js';
 import { tokenize } from '../../providers/embeddings/index.js';
 import { clock } from '../../lib/clock.js';
 import { audienceFor, offerTypeFor } from './categories.js';
@@ -47,7 +48,7 @@ export function salesProfile(ctx: { business: any; campaign?: any; lead?: any })
     : objective ? `it’s about ${objective}`
     : pains.length ? `we help ${aud.owners} with ${pains[0].want ? pains[0].pain.split(/\s+(with|on|for|via)\s+/)[0] : pains[0].pain}` : `we help ${aud.owners} grow without adding staff`;
   const impactQ = offer?.impact?.(aud) ?? 'Roughly how often does that happen — like, in a typical week?';
-  return { audience: cached?.audience || aud.owners, pains, proof, reason, impactQ };
+  return { audience: cached?.audience || aud.owners, pains, proof, reason: speakAs(b, reason), impactQ };
 }
 
 /** The product that fixes a given problem: same topic first (no-shows ↔ reminders), then shared words. */
@@ -71,7 +72,7 @@ export async function generateSalesProfile(business: any, campaign: any) {
   const offer = [...(business.products ?? []), ...(business.services ?? [])].map((p: any) => `${p.name}: ${p.description ?? ''}`).join('; ');
   const r = await llm.chat([
     { role: 'system', content: 'You are a top B2B cold-calling coach. Return JSON only: {"audience": string (plural, how you would say it out loud, e.g. "dental clinic owners"), "oneLiner": string (starts with "we help", under 16 words, concrete outcome, no hype), "pains": [3 short problems in the prospect\'s own words, each under 9 words, that THIS seller can actually solve]}. Never invent statistics or customers.' },
-    { role: 'user', content: `Seller: ${business.name} — ${business.description ?? ''}\nOffer: ${offer}\nCalling: ${campaign.category}${campaign.research?.locations?.length ? ' in ' + campaign.research.locations.join(', ') : ''}\nDefault draft: ${JSON.stringify(base)}` },
+    { role: 'user', content: `Seller: ${business.name || `${business.ownerName ?? 'a freelancer'} (freelancer)`} — ${business.description ?? ''}\nOffer: ${offer}\nCalling: ${campaign.category}${campaign.research?.locations?.length ? ' in ' + campaign.research.locations.join(', ') : ''}\nDefault draft: ${JSON.stringify(base)}` },
   ], { json: true, temperature: 0.4, maxTokens: 300 });
   const j = safeJson(r.content);
   if (!j?.oneLiner || !Array.isArray(j.pains) || j.pains.length < 2) return undefined;

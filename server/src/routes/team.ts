@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { brandName } from '../lib/brand.js';
 import { z } from 'zod';
 import bcrypt from 'bcryptjs';
 import { TeamMember, User, ROLES, Business } from '../models/index.js';
@@ -32,7 +33,7 @@ teamRouter.post('/invite', requirePermission('team:manage'), async (req, res) =>
   const member = await TeamMember.create({ ...scope(req), userId: user._id, role: body.role, status: 'invited', invitedBy: req.auth!.userId, inviteTokenHash: sha256(token) });
   const business = await Business.findById(req.tenant!.businessId, { name: 1 }).lean();
   const link = `${env.CLIENT_ORIGIN}/accept-invite?token=${token}`;
-  await sendEmail({ to: user.email, subject: `You're invited to ${business?.name} on AI Sales Agent`, text: `${req.auth!.name} invited you as ${body.role}. Accept: ${link}` });
+  await sendEmail({ to: user.email, subject: `You're invited to ${brandName(business)} on AI Sales Agent`, text: `${req.auth!.name} invited you as ${body.role}. Accept: ${link}` });
   await audit(req, 'team.invited', 'TeamMember', member._id, { email: user.email, role: body.role });
   // inviteLink is returned so admins can share it manually when SMTP isn't configured
   res.status(201).json({ id: member._id, email: user.email, role: member.role, status: member.status, inviteLink: link });

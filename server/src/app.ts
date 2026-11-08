@@ -1,3 +1,4 @@
+import { assistRouter } from './routes/assist.js';
 import express from 'express';
 import helmet from 'helmet';
 import cors from 'cors';
@@ -67,6 +68,7 @@ export function createApp() {
   api.use('/compliance', complianceRouter);
   api.use('/system', systemRouter);
   api.use('/reports', reportsRouter);
+  api.use('/assist', assistRouter);
   app.use('/api', api);
   app.use('/api', notFoundHandler);
 

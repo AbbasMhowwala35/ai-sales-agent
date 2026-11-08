@@ -1,4 +1,5 @@
 import { useRef, useState, type FormEvent } from 'react';
+import { AiAssist } from '../components/AiAssist';
 import { Link } from 'react-router-dom';
 import { UploadCloud, Globe, FileText, RefreshCw, Trash2, MessageSquareText, Lock } from 'lucide-react';
 import { useApi } from '../lib/useApi';
@@ -153,17 +154,17 @@ function TextModal({ open, onClose, onDone }: { open: boolean; onClose: () => vo
     <Modal open={open} onClose={onClose} title="Write a note" wide footer={<><button className="btn-secondary" onClick={onClose}>Cancel</button><button className="btn-primary" disabled={!title || content.length < 20 || busy} onClick={submit}>{busy && <Spinner />}Add note</button></>}>
       <div className="space-y-4">
         <Field label="Title"><input className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Delivery & installation" /></Field>
-        <Field label="Content" hint="At least 20 characters."><textarea className="input" rows={10} value={content} onChange={(e) => setContent(e.target.value)} /></Field>
+        <Field label="Content" hint="At least 20 characters."><textarea className="input" rows={10} value={content} onChange={(e) => setContent(e.target.value)} /><AiAssist field="note" context={title} value={content} onApply={setContent} /></Field>
       </div>
     </Modal>
   );
 }
 
 function DocModal({ id, onClose }: { id: string | null; onClose: () => void }) {
-  const { data } = useApi<any>(id ? `/knowledge/${id}` : null);
+  const { data, error, reload } = useApi<any>(id ? `/knowledge/${id}` : null);
   return (
     <Modal open={!!id} onClose={onClose} title={data?.title ?? 'Source'} wide>
-      {!data ? <Spinner /> : (
+      {!data ? (error ? <ErrorState message={error} onRetry={reload} /> : <Spinner />) : (
         <div className="space-y-3">
           <p className="text-[13px] text-muted">{data.source} · {fmtNum(data.charCount)} characters · {data.chunkCount} passages</p>
           {data.chunks.map((c: any) => <p key={c._id} className="rounded-control bg-sunken p-3 text-[13px] whitespace-pre-wrap leading-relaxed">{c.text}</p>)}

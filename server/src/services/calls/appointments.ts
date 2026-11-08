@@ -1,4 +1,5 @@
 import { Appointment, Lead, TeamMember, Business } from '../../models/index.js';
+import { brandName } from '../../lib/brand.js';
 import { buildIcs, createCalendarEvent } from '../../providers/calendar/index.js';
 import { sendEmail } from '../../providers/email/index.js';
 import { logActivity } from '../activity.js';
@@ -9,7 +10,7 @@ import { logger } from '../../lib/logger.js';
 export async function createAppointment(o: { businessId: unknown; leadId: unknown; callId?: unknown; at: Date; kind: 'meeting' | 'callback'; business: any; lead: any; durationMin?: number; userId?: unknown; notes?: string; with?: 'owner' | 'specialist' }) {
   const tz = (await import('./compliance.js')).leadTimezone(o.lead, o.business?.compliance?.timezone ?? 'Asia/Kolkata'); // prospect’s local time
   const endsAt = new Date(o.at.getTime() + (o.durationMin ?? (o.kind === 'callback' ? 15 : 30)) * 60_000);
-  const title = o.kind === 'callback' ? `Callback: ${o.lead.companyName}` : `${o.business.name} × ${o.lead.companyName}${o.lead.contactName ? ` (${o.lead.contactName})` : ''}`;
+  const title = o.kind === 'callback' ? `Callback: ${o.lead.companyName}` : `${brandName(o.business)} × ${o.lead.companyName}${o.lead.contactName ? ` (${o.lead.contactName})` : ''}`;
   const appt = await Appointment.create({
     businessId: o.businessId, leadId: o.leadId, callId: o.callId, type: o.kind, title, startsAt: o.at, endsAt, timezone: tz,
     attendeeEmail: o.lead.email, assignedTo: o.lead.assignedTo, notes: o.notes, with: o.with ?? 'specialist',

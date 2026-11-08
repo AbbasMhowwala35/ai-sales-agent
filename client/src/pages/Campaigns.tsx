@@ -5,7 +5,7 @@ import { useApi } from '../lib/useApi';
 import { post } from '../lib/api';
 import { useAuth } from '../store/auth';
 import { toast } from '../store/ui';
-import { PageHeader, Panel, Pill, STATUS_TONE, Spinner, Modal, Empty, ErrorState, TableSkeleton } from '../components/ui';
+import { PageHeader, Panel, Pill, STATUS_TONE, Spinner, Modal, Empty, ErrorState, TableSkeleton , Pending } from '../components/ui';
 import { CampaignFields, LeadPicker, ResearchFields, blankCampaign, countryIso, finalLocations, areaSummary } from '../components/CampaignForm';
 import { OutcomeBar } from '../components/Outcome';
 import { cx, Field } from '../components/ui';
@@ -23,7 +23,7 @@ export default function Campaigns() {
         actions={can && <button className="btn-primary" onClick={() => setParams({ new: '1' })}><Plus className="h-4 w-4" />New campaign</button>} />
       {error && <ErrorState message={error} onRetry={reload} />}
       <Panel bodyClass="overflow-x-auto">
-        {!data ? <TableSkeleton /> : !data.items.length ? <Empty icon={<Megaphone className="h-7 w-7" />} title="No campaigns yet" action={can && <button className="btn-primary" onClick={() => setParams({ new: '1' })}>Create a campaign</button>}>A campaign tells your agent who to call, when, and what to aim for.</Empty> : (
+        {!data ? <Pending error={error} onRetry={reload} /> : !data.items.length ? <Empty icon={<Megaphone className="h-7 w-7" />} title="No campaigns yet" action={can && <button className="btn-primary" onClick={() => setParams({ new: '1' })}>Create a campaign</button>}>A campaign tells your agent who to call, when, and what to aim for.</Empty> : (
           <table className="w-full text-sm">
             <thead><tr><th className="th">Campaign</th><th className="th">Status</th><th className="th">Results so far</th><th className="th text-right">Meetings</th><th className="th text-right">Calls</th><th className="th">Progress</th><th className="th" /></tr></thead>
             <tbody>{data.items.map((c: any) => {

@@ -113,6 +113,7 @@ export async function addToDnc(businessId: unknown, lead: any, reason: 'opt_out'
   await Lead.updateOne({ businessId, _id: lead._id }, { doNotCall: true, consent: 'revoked' });
   await CampaignLead.updateMany({ businessId, leadId: lead._id, status: { $in: ['queued', 'retry'] } }, { status: 'skipped', skipReason: 'Opted out' });
   await logActivity(businessId, lead._id, 'opt_out', `Added to Do-Not-Call list (${reason})`, { source }, userId);
+  if (reason === 'opt_out') await notify(businessId, { type: 'warning', title: 'Asked not to be called', message: `${lead.companyName ?? 'A prospect'} opted out — they’re on your Do-Not-Call list and won’t be called again.`, link: `/leads/${lead._id}` });
 }
 
 export interface FinalizeInput {

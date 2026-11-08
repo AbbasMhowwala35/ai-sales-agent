@@ -2,7 +2,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
 import { CalendarDays, LayoutDashboard, Bot, Radar, Users, Megaphone, PhoneCall, BarChart3, BookOpen, Building2, ShieldCheck, Bell, Moon, Sun, LogOut, Menu, X, ChevronDown } from 'lucide-react';
 import { useAuth } from '../store/auth';
-import { useUI } from '../store/ui';
+import { useUI, toast } from '../store/ui';
 import { useApi } from '../lib/useApi';
 import { post } from '../lib/api';
 import { timeAgo } from '../lib/format';
@@ -77,9 +77,19 @@ function SystemBadge() {
 
 function Notifications() {
   const [open, setOpen] = useState(false);
-  const { data, reload } = useApi<any>('/notifications', { poll: 20000 });
+  const { data, reload } = useApi<any>('/notifications', { poll: 15000 });
   const nav = useNavigate();
   const ref = useRef<HTMLDivElement>(null);
+  // Live: refresh when you come back to the tab, and pop up anything new that arrived since the last check.
+  useEffect(() => { const h = () => { if (document.visibilityState === 'visible') reload(); }; document.addEventListener('visibilitychange', h); window.addEventListener('focus', h); return () => { document.removeEventListener('visibilitychange', h); window.removeEventListener('focus', h); }; /* eslint-disable-next-line */ }, []);
+  const seen = useRef<Set<string> | null>(null);
+  useEffect(() => {
+    if (!data?.items) return;
+    if (!seen.current) { seen.current = new Set(data.items.map((n: any) => n._id)); return; }
+    const fresh = data.items.filter((n: any) => !n.read && !seen.current!.has(n._id));
+    fresh.slice(0, 3).reverse().forEach((n: any) => (n.type === 'error' ? toast.error : n.type === 'success' ? toast.success : toast.info)(`${n.title}${n.message ? ` — ${n.message}` : ''}`.slice(0, 140)));
+    data.items.forEach((n: any) => seen.current!.add(n._id));
+  }, [data]);
   useEffect(() => { const h = (e: MouseEvent) => !ref.current?.contains(e.target as Node) && setOpen(false); document.addEventListener('mousedown', h); return () => document.removeEventListener('mousedown', h); }, []);
   const markAll = async () => { await post('/notifications/read', {}); reload(); };
   return (
@@ -95,7 +105,7 @@ function Notifications() {
             {!data?.items?.length && <p className="px-4 py-8 text-center text-muted">You’re all caught up.</p>}
             {data?.items?.map((n: any) => (
               <button key={n._id} onClick={() => { setOpen(false); post('/notifications/read', { ids: [n._id] }).then(reload); if (n.link) nav(n.link); }} className={cx('w-full text-left px-4 py-3 border-b border-line last:border-0 hover:bg-sunken', !n.read && 'bg-signal-soft/40')}>
-                <div className="flex justify-between gap-2"><span className="font-semibold text-[13px]">{n.title}</span><span className="text-[11px] text-muted shrink-0">{timeAgo(n.createdAt)}</span></div>
+                <div className="flex justify-between gap-2"><span className="font-semibold text-[13px] flex items-center gap-2"><span aria-hidden className={cx('h-2 w-2 rounded-full shrink-0', n.type === 'error' ? 'bg-danger' : n.type === 'warning' ? 'bg-hot' : n.type === 'success' ? 'bg-signal' : n.type === 'reminder' ? 'bg-warm' : 'bg-cold')} />{n.title}</span><span className="text-[11px] text-muted shrink-0">{timeAgo(n.createdAt)}</span></div>
                 {n.message && <p className="text-[13px] text-muted line-clamp-2">{n.message}</p>}
               </button>
             ))}
@@ -116,7 +126,7 @@ function UserMenu() {
     <div className="relative" ref={ref}>
       <button className="flex items-center gap-2 rounded-control px-1.5 py-1 hover:bg-sunken" onClick={() => setOpen(!open)} aria-haspopup="menu">
         <Avatar name={user?.name} />
-        <span className="hidden sm:block text-left leading-tight"><span className="block text-[13px] font-semibold">{user?.name}</span><span className="block text-[11px] text-muted">{business?.name}</span></span>
+        <span className="hidden sm:block text-left leading-tight"><span className="block text-[13px] font-semibold">{user?.name}</span>{business?.name && business.name !== user?.name && <span className="block text-[11px] text-muted">{business.name}</span>}</span>
         <ChevronDown className="h-4 w-4 text-muted" />
       </button>
       {open && (
@@ -143,8 +153,22 @@ export function Layout() {
           <Notifications />
           <UserMenu />
         </header>
+        <WakingBanner />
         <main className="flex-1 px-4 sm:px-6 lg:px-8 py-6 max-w-[1320px] w-full mx-auto"><Outlet /></main>
       </div>
+    </div>
+  );
+}
+
+/** Shown while the free host wakes up after being idle — so a slow first load doesn't look broken. */
+function WakingBanner() {
+  const [on, setOn] = useState(false);
+  useEffect(() => { const h = (e: Event) => setOn(!!(e as CustomEvent).detail); window.addEventListener('server-waking', h); return () => window.removeEventListener('server-waking', h); }, []);
+  if (!on) return null;
+  return (
+    <div role="status" className="flex items-center gap-2 bg-warm/15 border-b border-warm/30 px-4 sm:px-6 lg:px-8 py-2 text-[13px]">
+      <span className="h-2 w-2 rounded-full bg-warm live-dot shrink-0" />
+      Starting up the server — free hosting sleeps when nobody’s used it for a while. This can take up to a minute.
     </div>
   );
 }
