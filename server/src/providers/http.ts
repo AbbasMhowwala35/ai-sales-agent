@@ -29,3 +29,8 @@ export async function jsonOrThrow(res: Response, provider: string) {
   if (!res.ok) throw new Error(`${provider} API error ${res.status}: ${text.slice(0, 300)}`);
   return text ? JSON.parse(text) : {};
 }
+
+/** A billing / key problem (no credits, bad key) — retrying won't help, so callers fall back to built-in mode. */
+export function isAccountError(e: unknown) {
+  return /insufficient_quota|credit_balance|billing|invalid_api_key|incorrect api key|error 401|error 403|quota/i.test(String((e as any)?.message ?? e));
+}

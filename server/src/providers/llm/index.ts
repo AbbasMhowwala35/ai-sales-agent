@@ -1,5 +1,6 @@
 import { env } from '../../config/env.js';
-import { fetchWithRetry, jsonOrThrow } from '../http.js';
+import { fetchWithRetry, jsonOrThrow, isAccountError } from '../http.js';
+import { logger } from '../../lib/logger.js';
 
 export interface ChatMessage { role: 'system' | 'user' | 'assistant' | 'tool'; content: string; tool_call_id?: string; tool_calls?: any; name?: string }
 export interface ToolDef { name: string; description: string; parameters: Record<string, unknown> }
@@ -29,7 +30,12 @@ export class OpenAIProvider implements LLMProvider {
       body: JSON.stringify(body),
       timeoutMs: 45_000,
     });
-    const data = await jsonOrThrow(res, 'OpenAI');
+    let data: any;
+    try { data = await jsonOrThrow(res, 'OpenAI'); } catch (e) {
+      // No credits / bad key: stop calling OpenAI for the rest of this run; the agent uses its built-in sales engine.
+      if (isAccountError(e)) { logger.warn('OpenAI chat unavailable (no credits or invalid key) — switching to the built-in sales engine'); setLLM(null); }
+      throw e;
+    }
     const msg = data.choices?.[0]?.message ?? {};
     return {
       content: msg.content ?? '',

@@ -1,5 +1,6 @@
 import { env } from '../../config/env.js';
-import { fetchWithRetry, jsonOrThrow } from '../http.js';
+import { fetchWithRetry, jsonOrThrow, isAccountError } from '../http.js';
+import { logger } from '../../lib/logger.js';
 
 export interface EmbeddingProvider { model: string; dims: number; embed(texts: string[]): Promise<number[][]> }
 
@@ -69,10 +70,28 @@ export class LocalHashEmbeddings implements EmbeddingProvider {
   }
 }
 
+/** OpenAI embeddings that switch to the built-in embedder for good if the account has no credits or the key is wrong. */
+export class FallbackEmbeddings implements EmbeddingProvider {
+  private local = new LocalHashEmbeddings();
+  private degraded = false;
+  constructor(private primary: EmbeddingProvider) {}
+  get model() { return this.degraded ? this.local.model : this.primary.model; }
+  get dims() { return this.degraded ? this.local.dims : this.primary.dims; }
+  async embed(texts: string[]) {
+    if (this.degraded) return this.local.embed(texts);
+    try { return await this.primary.embed(texts); } catch (e) {
+      if (!isAccountError(e)) throw e;
+      this.degraded = true;
+      logger.warn('OpenAI embeddings unavailable (no credits or invalid key) — using built-in embeddings instead');
+      return this.local.embed(texts);
+    }
+  }
+}
+
 let cached: EmbeddingProvider | undefined;
 export function getEmbeddings(): EmbeddingProvider {
   if (cached) return cached;
-  cached = env.EMBEDDING_PROVIDER === 'openai' && env.OPENAI_API_KEY ? new OpenAIEmbeddings(env.OPENAI_API_KEY) : new LocalHashEmbeddings();
+  cached = env.EMBEDDING_PROVIDER === 'openai' && env.OPENAI_API_KEY ? new FallbackEmbeddings(new OpenAIEmbeddings(env.OPENAI_API_KEY)) : new LocalHashEmbeddings();
   return cached;
 }
 
