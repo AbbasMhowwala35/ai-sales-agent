@@ -9,12 +9,12 @@ export function detectIntents(text: string) {
   return {
     optOut: has(t, /(do not|don't|dont|never|stop) (call|calling|contact|ring)|remove (me|my number)|take me off|unsubscribe|opt[- ]?out|lose my number|add me to (your )?(dnc|do not call)|stop calling/),
     wantsHuman: has(t, /(speak|talk|connect|transfer).{0,20}(human|person|someone|representative|agent|manager|sales ?(person|rep|team))|real person|human being/),
-    asksIfAI: has(t, /(are|r) (you|u) (a |an )?(robot|bot|ai|machine|human|real|computer|recording)|is this (a |an )?(robot|bot|ai|recording|automated)/),
-    affirm: has(t, /\b(yes|yeah|yep|yup|sure|ok|okay|alright|go ahead|of course|please do|sounds good|why not|absolutely|definitely|haan|ha ji|go on|tell me|i can|that works|works for me|fine)\b/),
-    deny: has(t.replace(/\bno[- ]?shows?\b/g, ' '), /\b(no|nope|nah|not really|not now|don't think so|nahi)\b/),
-    busy: has(t, /\b(busy|in a meeting|driving|call (me )?(back|later)|not a good time|bad time|later)\b/),
+    asksIfAI: has(t, /(are|r) (you|u) (a |an )?(robot|bot|ai|machine|human|real|computer|recording)|is this (a |an )?(robot|bot|ai|recording|automated|real person|human)|(am i|are we) (talking|speaking|chatting) (to|with) (a |an )?(robot|bot|machine|computer|ai|real person|human|recording)|(robot|bot|machine|ai|computer) (hai|ho|h)\b|kya (aap|tum|ye) (robot|bot|ai|machine|insaan)/),
+    affirm: has(t, /\b(yes|yeah|yep|yup|sure|ok|okay|alright|go ahead|of course|please do|sounds good|why not|absolutely|definitely|haan|han|ha ji|haan ji|ji haan|boliye|bolo|batao|theek hai|thik hai|chalo|go on|tell me|i can|that works|works for me|fine)\b/),
+    deny: has(t.replace(/\bno[- ]?shows?\b/g, ' '), /\b(no|nope|nah|not really|not now|don't think so|nahi|nahin|nhi|mat karo)\b/),
+    busy: has(t, /\b(busy|in a meeting|driving|call (me )?(back|later)|not a good time|bad time|later|baad (me|mein|main)|kal baat|baat karte|abhi nahi|abhi time nahi)\b/),
     notInterested: has(t, /(not interested|no interest|don't need|dont need|we('re| are) (good|fine|covered|happy)|already have|no thanks|no thank you|not looking)/),
-    price: has(t, /(price|pricing|cost|how much|charges?|fees?|quote|rate|expensive|cheap|budget|afford)/),
+    price: has(t, /(price|pricing|cost|how much|charges?|fees?|quote|rate|expensive|cheap|budget|afford|kitna|kitne|kharcha|kharch|keemat|kimat|paisa|paise)/),
     question: has(t, /\?|^\s*(so |and |but |ok(ay)? |well )?(what|how|why|which|when|where|who|do you|can you|does it|is there|is it|are there|tell me about|explain)\b|\b(tell me about|explain|how much|what is|what's|how does|how do you|can you|do you (offer|have|do))\b/),
     interested: has(t, /(interested|sounds (good|great|interesting)|tell me more|i'd like|we need|we are looking|looking for|we want|keen|curious|could use|want to know|send (me )?details)/),
     meeting: has(t, /(meet|meeting|demo|appointment|schedule|book|slot|call me|catch up|discuss further)/),
@@ -43,24 +43,26 @@ export function parseMeetingTime(text: string, tz = 'Asia/Kolkata', now = DateTi
   const t = text.toLowerCase();
   let day: DateTime | undefined;
   if (/day after tomorrow/.test(t)) day = now.plus({ days: 2 });
-  else if (/tomorrow|tmrw|kal\b/.test(t)) day = now.plus({ days: 1 });
-  else if (/\btoday|this (afternoon|evening)|later today/.test(t)) day = now;
+  else if (/parso/.test(t)) day = now.plus({ days: 2 });
+  else if (/tomorrow|tmrw|\bkal\b/.test(t)) day = now.plus({ days: 1 });
+  else if (/\btoday|\baaj\b|this (afternoon|evening)|later today/.test(t)) day = now;
   else if (/next week/.test(t)) day = now.plus({ weeks: 1 }).startOf('week');
   else {
     const d = DAYS.findIndex((x) => t.includes(x));
     if (d >= 0) { let diff = d + 1 - now.weekday; if (diff <= 0) diff += 7; day = now.plus({ days: diff }); }
   }
-  const tm = t.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.)?/);
+  const tm = t.match(/\b(\d{1,2})(?::(\d{2}))?\s*(am|pm|a\.m\.|p\.m\.|baje)?/);
   let hour: number | undefined, minute = 0;
   if (tm && (tm[3] || tm[2] || /\bat\b/.test(t))) {
     hour = parseInt(tm[1], 10); minute = tm[2] ? parseInt(tm[2], 10) : 0;
-    const ap = tm[3]?.replace(/\./g, '');
+    let ap: string | undefined = tm[3]?.replace(/\./g, '');
+    if (ap === 'baje') ap = /subah/.test(t) ? 'am' : /shaam|raat|dopahar/.test(t) ? 'pm' : undefined;
     if (ap === 'pm' && hour < 12) hour += 12;
     if (ap === 'am' && hour === 12) hour = 0;
     if (!ap && hour >= 1 && hour <= 7) hour += 12; // "at 3" in business context → 3 PM
-  } else if (/morning/.test(t)) hour = 11;
+  } else if (/morning|subah/.test(t)) hour = 11;
   else if (/afternoon/.test(t)) hour = 15;
-  else if (/evening/.test(t)) hour = 17;
+  else if (/evening|shaam/.test(t)) hour = 17;
   if (!day && hour === undefined) return undefined;
   if (hour !== undefined && (hour > 23 || minute > 59)) return undefined;
   let dt = (day ?? now).set({ hour: hour ?? 11, minute, second: 0, millisecond: 0 });
@@ -96,7 +98,7 @@ export function parseFollowUp(text: string, tz = 'Asia/Kolkata', defaultDays = 4
 /** Which parts of a time the prospect actually said. "Tomorrow" has a day but no hour → ask for a time. */
 export function timeParts(text: string) {
   const t = text.toLowerCase();
-  const hasDay = /\b(today|tonight|tomorrow|tmrw|day after tomorrow|next week|monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri)\b/.test(t);
-  const hasHour = /\b\d{1,2}(:\d{2})?\s*(am|pm|a\.m\.?|p\.m\.?)\b|\bat\s+\d{1,2}(:\d{2})?\b|\b\d{1,2}:\d{2}\b|\bnoon\b|\bmidday\b|\b(morning|afternoon|evening|lunchtime)\b/.test(t);
+  const hasDay = /\b(today|tonight|tomorrow|tmrw|kal|parso|aaj|day after tomorrow|next week|monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri)\b/.test(t);
+  const hasHour = /\b\d{1,2}(:\d{2})?\s*(am|pm|a\.m\.?|p\.m\.?)\b|\bat\s+\d{1,2}(:\d{2})?\b|\b\d{1,2}:\d{2}\b|\bnoon\b|\bmidday\b|\b(morning|afternoon|evening|lunchtime|subah|shaam|dopahar)\b|\b\d{1,2}\s*baje\b/.test(t);
   return { hasDay, hasHour };
 }

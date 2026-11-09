@@ -153,11 +153,11 @@ export type ObjectionKind = 'sales_call' | 'how_number' | 'send_info' | 'has_sol
 const OBJ: [ObjectionKind, RegExp][] = [
   ['how_number', /how (did|do) you (get|find) (my|this) (number|details|info)|where did you get (my|this) number|who gave you (my|this) number/],
   ['sales_call', /\b(is this|this is) (a |an )?(sales|cold|marketing|telemarketing) call|are you selling|trying to sell me/],
-  ['who_is_this', /^\W*(who is this|who's this|who is calling|who are you|sorry,? who)\W*$/],
+  ['who_is_this', /^\W*(who is this|who's this|who is calling|who are you|sorry,? who)\W*$|who are you exactly|(which|what) company|where are you calling from|who do you (work for|represent)|kaun (bol rahe|ho|hai)/],
   ['send_info', /\b(send|email|e-mail|text|whatsapp) (me )?(some |the |more )?(info|information|details|something|it|a brochure|over)|just (email|send)|put it in an email/],
   ['partner', /\b(talk|speak|check|run it by|discuss) (to |with )?(my )?(partner|wife|husband|business partner|manager|boss|team|co-?owner|accountant)|not my decision|(partner|boss|manager) (decides|handles|makes)/],
   ['too_small', /\b(too small|just me|only me|one.?(person|chair|woman|man) (shop|business|salon)|tiny (shop|business|salon)|small (shop|operation))/],
-  ['no_budget', /\b(no budget|can'?t afford|too expensive|money is tight|tight on (money|cash|budget)|cost too much|costs too much|no money)\b/],
+  ['no_budget', /\b(no budget|can'?t afford|too expensive|money is tight|tight on (money|cash|budget)|budget is (tight|low|limited|small)|(low|small|limited|tight) budget|cost too much|costs too much|no money|bahut mehnga|mehnga hai)\b/],
   ['has_solution', /\b(already (have|use|got|using|work with)|we use|we'?re using|happy with (what|our|the)|our (current|own) (system|software|app|vendor|provider)|we have (a|an|our own) (system|vendor|provider|app|someone)|in.?house|(locked|stuck) in (a )?contract)/],
 ];
 export function classifyObjection(text: string): ObjectionKind | undefined {
