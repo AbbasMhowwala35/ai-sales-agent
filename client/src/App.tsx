@@ -20,6 +20,7 @@ const Knowledge = lazy(() => import('./pages/Knowledge'));
 const Settings = lazy(() => import('./pages/Settings'));
 const Team = lazy(() => import('./pages/Team'));
 const Calendar = lazy(() => import('./pages/Calendar'));
+const Talk = lazy(() => import('./pages/Talk'));
 
 const Loading = () => <div className="flex justify-center py-24 text-muted"><Spinner className="h-6 w-6" /></div>;
 
@@ -34,6 +35,7 @@ export function App() {
           <Route path="/login" element={token ? <Navigate to="/" replace /> : <AuthPage mode="login" />} />
           <Route path="/register" element={token ? <Navigate to="/settings?welcome=1" replace /> : <AuthPage mode="register" />} />
           <Route path="/accept-invite" element={<AcceptInvitePage />} />
+          <Route path="/talk/:token" element={<Talk />} />
           <Route element={token ? <Layout /> : <Navigate to="/login" replace />}>
             <Route index element={<Dashboard />} />
             <Route path="agents" element={<Agents />} />

@@ -318,3 +318,39 @@ describe('analytics', () => {
     expect((await api(s.token).get('/api/analytics?from=2026-01-01&to=2025-01-01')).status).toBe(400);
   });
 });
+
+describe('Telnyx (free-trial friendly) calling', () => {
+  it('runs the conversation over TeXML webhooks secured by a per-call key', async () => {
+    const { telnyxKey } = await import('../../src/providers/telephony/telnyx.js');
+    clock.set(BUSINESS_HOURS_IST);
+    const dialed: any[] = [];
+    setTelephony({ id: 'telnyx', dial: async (req) => { dialed.push(req); return { providerCallId: '' }; } });
+    try {
+      const s = await setupBusiness([{ name: 'Telnyx Test', phone: '+919876600901' }]);
+      const created = await api(s.token).post('/api/calls', { leadId: s.leadIds[0] });
+      expect(created.status).toBe(202);
+      await drain();
+      expect(dialed).toHaveLength(1);
+      const id = created.body._id; const k = telnyxKey(id);
+      expect((await request(app).post(`/api/webhooks/telnyx/voice/${id}`).send({ CallSid: 'v3:abc' })).status).toBe(403); // no key
+      expect((await request(app).post(`/api/webhooks/telnyx/voice/${id}?k=${'0'.repeat(32)}`).send({ CallSid: 'v3:abc' })).status).toBe(403); // wrong key
+      const voice = await request(app).post(`/api/webhooks/telnyx/voice/${id}?k=${k}`).send({ CallSid: 'v3:abc', CallStatus: 'in-progress' }); // JSON body
+      expect(voice.status).toBe(200);
+      expect(voice.text).toMatch(/<Gather input="speech" speechTimeout="2"/);
+      expect(voice.text).toMatch(/AI assistant/);
+      expect(voice.text).not.toMatch(/actionOnEmptyResult|speechModel/); // Twilio-only attributes stay out
+      expect(voice.text).toContain(`/api/webhooks/telnyx/gather/${id}?k=${k}`);
+      const t1 = await request(app).post(`/api/webhooks/telnyx/gather/${id}?k=${k}`).type('form').send({ CallSid: 'v3:abc', SpeechResult: 'Yes go ahead' }); // form body
+      expect(t1.text).toMatch(/<Say/);
+      const t2 = await request(app).post(`/api/webhooks/telnyx/gather/${id}?k=${k}`).send({ CallSid: 'v3:abc', SpeechResult: 'Please do not call me again' });
+      expect(t2.text).toMatch(/<Hangup\/>/);
+      await request(app).post(`/api/webhooks/telnyx/status/${id}?k=${k}`).send({ CallSid: 'v3:abc', CallStatus: 'completed', CallDuration: '41' });
+      await drain();
+      const call = (await api(s.token).get(`/api/calls/${id}`)).body;
+      expect(call.result).toBe('answered');
+      expect(call.durationSec).toBe(41);
+      expect(call.optOut).toBe(true);
+      expect((await Call.findOne({ businessId: s.businessId, _id: id }).lean() as any).providerCallId).toBe('v3:abc');
+    } finally { setTelephony(null); clock.set(null); }
+  });
+});

@@ -29,7 +29,13 @@ const schema = z.object({
   OPENAI_EMBEDDING_MODEL: z.string().default('text-embedding-3-small'),
 
   // Telephony / voice
-  TELEPHONY_PROVIDER: z.enum(['twilio', 'vapi', 'simulator']).optional(),
+  TELEPHONY_PROVIDER: z.enum(['twilio', 'vapi', 'telnyx', 'simulator']).optional(),
+  // Telnyx (TeXML) — free trial allows AI calls to your verified number
+  TELNYX_API_KEY: z.string().optional(),
+  TELNYX_ACCOUNT_SID: z.string().optional(),
+  TELNYX_APP_ID: z.string().optional(),
+  TELNYX_FROM_NUMBER: z.string().optional(),
+  TELNYX_RECORD: bool(false),
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),
   TWILIO_FROM_NUMBER: z.string().optional(),
@@ -85,7 +91,7 @@ export const env = {
   EMBEDDING_PROVIDER: parsed.EMBEDDING_PROVIDER ?? (parsed.OPENAI_API_KEY ? 'openai' : 'local'),
   TELEPHONY_PROVIDER:
     parsed.TELEPHONY_PROVIDER ??
-    (parsed.VAPI_API_KEY ? 'vapi' : parsed.TWILIO_ACCOUNT_SID ? 'twilio' : 'simulator'),
+    (parsed.VAPI_API_KEY ? 'vapi' : parsed.TELNYX_API_KEY && parsed.TELNYX_APP_ID ? 'telnyx' : parsed.TWILIO_ACCOUNT_SID ? 'twilio' : 'simulator'),
   isTest: parsed.NODE_ENV === 'test',
   isProd: parsed.NODE_ENV === 'production',
 };

@@ -119,6 +119,16 @@ agentsRouter.post('/:id/test-chat', async (req, res) => {
   res.json(r);
 });
 
+/** Shareable voice-demo link (expires in 14 days) — anyone with it can talk to this agent in their browser. */
+agentsRouter.post('/:id/demo-link', async (req, res) => {
+  const body = parse(z.object({ campaignId: z.string().regex(/^[a-f0-9]{24}$/i).optional() }), req.body ?? {});
+  const a = await AIAgent.findOne({ ...scope(req), _id: req.params.id }, { _id: 1 }).lean();
+  if (!a) throw notFound('Agent');
+  const { demoToken } = await import('./demo.js');
+  const token = demoToken(String(req.tenant!.businessId), String(a._id), body.campaignId);
+  res.json({ url: `${env.PUBLIC_BASE_URL}/talk/${token}`, expiresInDays: 14 });
+});
+
 /** Voice preview: real ElevenLabs audio when configured; otherwise 204 so the browser can use a local voice. */
 agentsRouter.post('/:id/voice-preview', async (req, res) => {
   const body = parse(z.object({ text: z.string().trim().min(1).max(400).optional(), voiceId: z.string().max(60).optional() }), req.body ?? {});
