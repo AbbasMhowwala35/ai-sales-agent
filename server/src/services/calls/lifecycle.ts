@@ -65,7 +65,11 @@ export async function dialCall(callId: string, businessId: string, ignoreWindow 
     logger.warn({ callId, err: e.message }, 'dial failed');
     const msg = String(e.message ?? '');
     // Explain the common Twilio refusals in plain words (the phone never rang in these cases).
-    const reason = /trial account/i.test(msg) ? 'Twilio refused the call: trial accounts can’t run AI calls (only Twilio’s demo scripts, and only within the trial number’s country). Upgrade the Twilio account to pay-as-you-go to make AI calls.'
+    const reason = /Telnyx/i.test(msg) && /verif|whitelist/i.test(msg) ? 'Telnyx refused the call: on a trial account you can only call your verified number.'
+      : /Telnyx/i.test(msg) && /balance|insufficient|credit/i.test(msg) ? 'Telnyx refused the call: the account has no credit left.'
+      : /Telnyx/i.test(msg) && /outbound voice profile|destination|not allowed|country/i.test(msg) ? 'Telnyx refused the call: calling this country isn’t enabled. Add it in Telnyx → Voice → Outbound Voice Profiles.'
+      : /Telnyx/i.test(msg) && /\b(401|403)\b|unauthor|api key/i.test(msg) ? 'Telnyx refused the call: the API key is wrong. Check TELNYX_API_KEY on the server.'
+      : /trial account/i.test(msg) ? 'Twilio refused the call: trial accounts can’t run AI calls (only Twilio’s demo scripts, and only within the trial number’s country). Upgrade the Twilio account to pay-as-you-go to make AI calls.'
       : /21219|not verified|unverified/i.test(msg) ? 'Twilio refused the call: on a trial account the number you call must be verified in Twilio (Phone Numbers → Verified Caller IDs).'
       : /21215|geo.?permission|international permissions/i.test(msg) ? 'Twilio refused the call: calling this country isn’t enabled. Turn it on in Twilio → Voice → Settings → Geo permissions.'
       : /21212|21210|invalid.*from|caller id/i.test(msg) ? 'Twilio refused the call: the caller number isn’t a Twilio number on this account. Check TWILIO_FROM_NUMBER and your caller IDs.'

@@ -57,7 +57,7 @@ export function leadTimezone(lead: any, fallback: string) {
 export function resolveCallerId(business: any, lead: any): { number?: string; vapiPhoneNumberId?: string; country?: string; missing?: boolean } {
   const country = leadCountry(lead);
   const ids: any[] = business?.callerIds ?? [];
-  if (!ids.length) return { country, number: env.TWILIO_FROM_NUMBER, vapiPhoneNumberId: env.VAPI_PHONE_NUMBER_ID };
+  if (!ids.length) return { country, number: (env.TELEPHONY_PROVIDER === 'telnyx' ? env.TELNYX_FROM_NUMBER : env.TWILIO_FROM_NUMBER), vapiPhoneNumberId: env.VAPI_PHONE_NUMBER_ID };
   const hit = ids.find((x) => x.country?.toUpperCase() === country) ?? (country === 'CA' ? ids.find((x) => x.country?.toUpperCase() === 'US') : undefined);
   return hit ? { country, number: hit.number, vapiPhoneNumberId: hit.vapiPhoneNumberId } : { country, missing: true };
 }

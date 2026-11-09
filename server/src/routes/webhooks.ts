@@ -104,6 +104,67 @@ webhooksRouter.post('/twilio/recording/:callId', async (req, res) => {
   res.status(204).end();
 });
 
+/* ------------------------------- Telnyx -------------------------------- */
+// TeXML is TwiML-compatible; differences: numeric speechTimeout, no Twilio-only Gather attributes, JSON or form bodies.
+const texml = {
+  sayGather(text: string, o: any) {
+    return `<?xml version="1.0" encoding="UTF-8"?><Response><Gather input="speech" speechTimeout="2" timeout="8" language="${xmlEsc(o.language)}" action="${xmlEsc(o.action)}">${speakTexml(text, o)}</Gather><Redirect method="POST">${xmlEsc(o.action)}</Redirect></Response>`;
+  },
+  sayHangup(text: string, o: any) { return `<?xml version="1.0" encoding="UTF-8"?><Response>${speakTexml(text, o)}<Hangup/></Response>`; },
+  sayDial(text: string, number: string, o: any) { return `<?xml version="1.0" encoding="UTF-8"?><Response>${speakTexml(text, o)}<Dial${o.callerId ? ` callerId="${xmlEsc(o.callerId)}"` : ''} timeout="25">${xmlEsc(number)}</Dial></Response>`; },
+  hangup() { return `<?xml version="1.0" encoding="UTF-8"?><Response><Hangup/></Response>`; },
+};
+const xmlEsc = (s: unknown) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const speakTexml = (text: string, o: any) => (o.playUrl ? `<Play>${xmlEsc(o.playUrl)}</Play>` : `<Say voice="${xmlEsc(o.voice)}" language="${xmlEsc(o.language)}">${xmlEsc(text)}</Say>`);
+
+async function telnyxCall(req: Request) {
+  const { verifyTelnyxKey } = await import('../providers/telephony/telnyx.js');
+  if (!verifyTelnyxKey(String(req.params.callId), req.query.k)) throw forbidden('Invalid webhook key');
+  const c = await callFor(req);
+  // Telnyx's create-call response has no id; remember the CallSid from the first webhook (needed to hang up).
+  const sid = req.body?.CallSid ?? req.body?.call_sid;
+  if (c && sid && !c.call.providerCallId) await Call.updateOne({ businessId: c.businessId, _id: c.call._id }, { providerCallId: String(sid) });
+  return c;
+}
+
+webhooksRouter.post('/telnyx/voice/:callId', express.json({ limit: '200kb' }), async (req, res) => {
+  const { telnyxHook } = await import('../providers/telephony/telnyx.js');
+  const c = await telnyxCall(req);
+  res.type('text/xml');
+  if (!c) return res.send(texml.hangup());
+  const r = await beginConversation(String(c.call._id), c.businessId);
+  if (!r) return res.send(texml.hangup());
+  res.send(texml.sayGather(r.reply, { ...(await voiceFor(r.agent, c.businessId, r.reply)), action: telnyxHook('gather', String(c.call._id)) }));
+});
+
+webhooksRouter.post('/telnyx/gather/:callId', express.json({ limit: '200kb' }), async (req, res) => {
+  const { telnyxHook, speechFrom } = await import('../providers/telephony/telnyx.js');
+  const c = await telnyxCall(req);
+  res.type('text/xml');
+  if (!c || c.call.status === 'ended') return res.send(texml.hangup());
+  const r = await conversationTurn(String(c.call._id), c.businessId, speechFrom(req.body));
+  if (!r) return res.send(texml.hangup());
+  const v = await voiceFor(r.agent, c.businessId, r.reply);
+  const transfer = r.actions.find((a) => a.type === 'transfer') as any;
+  if (transfer) return res.send(texml.sayDial(r.reply, transfer.number, { ...v, callerId: env.TELNYX_FROM_NUMBER }));
+  if (r.end) return res.send(texml.sayHangup(r.reply, v));
+  res.send(texml.sayGather(r.reply, { ...v, action: telnyxHook('gather', String(c.call._id)) }));
+});
+
+webhooksRouter.post('/telnyx/status/:callId', express.json({ limit: '200kb' }), async (req, res) => {
+  const c = await telnyxCall(req);
+  if (!c) return res.status(204).end();
+  const status = String(req.body?.CallStatus ?? req.body?.call_status ?? '').toLowerCase();
+  const id = String(c.call._id);
+  if (status === 'ringing' || status === 'initiated' || status === 'queued') await Call.updateOne({ businessId: c.businessId, _id: id, status: { $in: ['queued', 'ringing'] } }, { status: 'ringing' });
+  else if (status === 'in-progress' || status === 'answered') await Call.updateOne({ businessId: c.businessId, _id: id }, { status: 'in_progress', answeredAt: new Date() });
+  else if (status) {
+    const map: Record<string, any> = { completed: 'answered', busy: 'busy', 'no-answer': 'missed', no_answer: 'missed', failed: 'failed', canceled: 'failed' };
+    await finalizeCall(id, c.businessId, { result: map[status] ?? 'failed', durationSec: Number(req.body?.CallDuration ?? req.body?.Duration ?? 0) || undefined, endReason: status });
+  }
+  res.status(204).end();
+});
+
 /* -------------------------------- Vapi -------------------------------- */
 webhooksRouter.post('/vapi', express.json({ limit: '5mb' }), async (req, res) => {
   if (env.VAPI_WEBHOOK_SECRET) {

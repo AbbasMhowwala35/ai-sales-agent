@@ -1,3 +1,4 @@
+import { demoRouter } from './routes/demo.js';
 import { assistRouter } from './routes/assist.js';
 import express from 'express';
 import helmet from 'helmet';
@@ -54,6 +55,7 @@ export function createApp() {
   app.use('/api/auth', authRouter);
   app.use('/api/integrations', integrationsRouter);
   const api = express.Router();
+  api.use('/demo', demoRouter); // public, token-scoped voice demo (before auth)
   api.use(requireAuth);
   api.use('/business', businessRouter);
   api.use('/team', teamRouter);

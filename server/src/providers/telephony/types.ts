@@ -11,7 +11,7 @@ export interface DialRequest {
   record: boolean;
 }
 export interface TelephonyProvider {
-  id: 'twilio' | 'vapi' | 'simulator';
+  id: 'twilio' | 'vapi' | 'telnyx' | 'simulator';
   dial(req: DialRequest): Promise<{ providerCallId: string }>;
   hangup?(providerCallId: string): Promise<void>;
 }

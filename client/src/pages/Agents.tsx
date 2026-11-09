@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { AiAssist } from '../components/AiAssist';
-import { Plus, Trash2, Star, RotateCcw, Send, CalendarCheck, PhoneForwarded, Ban, Play, Square, Mic, Upload, Volume2, VolumeX, Clock3, XCircle, Info } from 'lucide-react';
+import { Plus, Trash2, Star, RotateCcw, Send, CalendarCheck, PhoneForwarded, Ban, Play, Square, Mic, Upload, Volume2, VolumeX, Clock3, XCircle, Info, Share2 } from 'lucide-react';
 import { useApi } from '../lib/useApi';
+import { canListen, listen, stopListening } from '../lib/voice';
 import { post, patch, del, upload, api } from '../lib/api';
 import { useAuth } from '../store/auth';
 import { toast } from '../store/ui';
@@ -249,11 +250,42 @@ function TestChat({ agentId, name, engine, voice, dirty }: { agentId: string; na
   useEffect(() => { void begin(); /* eslint-disable-next-line */ }, [agentId]);
   const asCampaign = campaigns.find((c: any) => c._id === campaignId);
   useEffect(() => { end.current?.scrollIntoView({ block: 'nearest' }); }, [msgs]);
-  const send = async (e?: FormEvent) => {
-    e?.preventDefault(); if (!text.trim() || ended) return;
-    const t = text; setText(''); setMsgs((m) => [...m, { role: 'you', text: t }]); setBusy(true);
-    try { const r = await post(`/agents/${agentId}/test-chat`, { message: t, state, ...(campaignId ? { campaignId } : {}) }); setState(r.state); setMsgs((m) => [...m, { role: 'agent', text: r.reply, actions: r.actions }]); if (r.end) setEnded(true); if (speak) void playVoice(agentId, { ...voice, text: r.reply }, () => undefined); }
-    catch (err: any) { toast.error(err.message); } finally { setBusy(false); }
+  const stateRef = useRef<any>(null); stateRef.current = state;
+  const send = async (e?: FormEvent, spoken?: string) => {
+    e?.preventDefault(); const t = (spoken ?? text).trim(); if (!t || ended) return;
+    if (!spoken) setText('');
+    setMsgs((m) => [...m, { role: 'you', text: t }]); setBusy(true);
+    try {
+      const r = await post(`/agents/${agentId}/test-chat`, { message: t, state: stateRef.current, ...(campaignId ? { campaignId } : {}) });
+      setState(r.state); stateRef.current = r.state; setMsgs((m) => [...m, { role: 'agent', text: r.reply, actions: r.actions }]);
+      if (r.end) { setEnded(true); handsFree.current = false; setListening(false); }
+      if (speak || handsFree.current) void playVoice(agentId, { ...voice, text: r.reply }, () => { if (handsFree.current && !r.end) void hear(); });
+    } catch (err: any) { toast.error(err.message); handsFree.current = false; } finally { setBusy(false); }
+  };
+  // Talk instead of typing: the browser turns your speech into text (free), the agent answers out loud, then listens again.
+  const handsFree = useRef(false);
+  const [listening, setListening] = useState(false);
+  const hear = async () => {
+    setListening(true);
+    try {
+      const said = await listen(voice.accent === 'British' ? 'en-GB' : 'en-US');
+      setListening(false);
+      if (!handsFree.current) return;
+      if (said) await send(undefined, said); else void hear();
+    } catch (e: any) { setListening(false); handsFree.current = false; toast.error(e.message); }
+  };
+  const toggleMic = () => {
+    if (handsFree.current) { handsFree.current = false; stopListening(); stopVoice(); setListening(false); return; }
+    handsFree.current = true; setSpeak(true); void hear();
+  };
+  const [sharing, setSharing] = useState(false);
+  const shareDemo = async () => {
+    setSharing(true);
+    try {
+      const r = await post(`/agents/${agentId}/demo-link`, campaignId ? { campaignId } : {});
+      try { await navigator.clipboard.writeText(r.url); toast.success('Voice demo link copied — send it to anyone to talk to the agent (works for 14 days).'); }
+      catch { window.prompt('Copy this voice demo link:', r.url); }
+    } catch (e: any) { toast.error(e.message); } finally { setSharing(false); }
   };
   const suggestions = ['Sure, go ahead', 'How much does it cost?', 'Wait, are you a real person?', 'Not now, maybe in two months', "I'm busy, call me tomorrow at 4pm", "We're not interested", 'Thursday at 11am works', 'Please don’t call again'];
   return (
@@ -262,6 +294,7 @@ function TestChat({ agentId, name, engine, voice, dirty }: { agentId: string; na
         <div><h2 className="text-[15px] font-[650]">Test call with {name}</h2><p className="text-xs text-muted">You play {asCampaign?.category ? `a ${asCampaign.category.toLowerCase().replace(/s$/, '')} owner` : 'the prospect'} · engine: {engine}{dirty ? ' · save to test your edits' : ''}</p></div>
         <div className="flex gap-1">
           <button className={cx('btn-ghost btn-sm', speak && 'text-signal')} onClick={() => { if (speak) stopVoice(); setSpeak(!speak); }} aria-pressed={speak} title="Hear the agent’s replies">{speak ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}<span className="sr-only">Speak replies</span></button>
+          <button className="btn-ghost btn-sm" onClick={shareDemo} disabled={sharing} title="Get a link anyone can open to talk to this agent in their browser">{sharing ? <Spinner /> : <Share2 className="h-4 w-4" />}<span className="hidden sm:inline">Share voice demo</span></button>
           <button className="btn-ghost btn-sm" onClick={() => begin()} aria-label="Restart test"><RotateCcw className="h-4 w-4" />Restart</button>
         </div>
       </header>
@@ -283,7 +316,9 @@ function TestChat({ agentId, name, engine, voice, dirty }: { agentId: string; na
       </div>
       {!ended && <div className="px-5 pb-2 flex gap-1.5 overflow-x-auto">{suggestions.map((s) => <button key={s} className="rounded-full border border-line px-2.5 py-1 text-xs whitespace-nowrap hover:bg-sunken" onClick={() => setText(s)}>{s}</button>)}</div>}
       <form onSubmit={send} className="flex gap-2 p-4 pt-2 border-t border-line">
-        <input className="input" value={text} onChange={(e) => setText(e.target.value)} disabled={ended} placeholder={ended ? 'Call ended' : 'Reply as the prospect…'} aria-label="Your reply" />
+        <input className="input" value={text} onChange={(e) => setText(e.target.value)} disabled={ended} placeholder={ended ? 'Call ended' : listening ? 'Listening… speak now' : 'Reply as the prospect…'} aria-label="Your reply" />
+        {canListen() && <button type="button" onClick={toggleMic} disabled={ended} aria-pressed={listening || handsFree.current} aria-label={handsFree.current ? 'Stop talking' : 'Talk instead of typing'} title={handsFree.current ? 'Stop' : 'Talk instead of typing'}
+          className={cx('w-10 shrink-0 rounded-control inline-flex items-center justify-center border', handsFree.current ? 'bg-danger text-white border-danger' : 'border-line hover:bg-sunken')}>{handsFree.current ? <Square className="h-4 w-4 fill-current" /> : <Mic className={cx('h-4 w-4', listening && 'text-signal')} />}</button>}
         <button className="btn-primary w-10 p-0" disabled={busy || ended || !text.trim()} aria-label="Send"><Send className="h-4 w-4" /></button>
       </form>
     </section>
