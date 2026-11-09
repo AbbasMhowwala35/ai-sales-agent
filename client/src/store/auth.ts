@@ -9,11 +9,14 @@ export interface Session {
 }
 interface AuthState extends Partial<Session> {
   setSession: (s: Session) => void;
+  /** Refresh name/role/workspace details only — keeps the current login token, so it never re-triggers a reload. */
+  refreshProfile: (s: Session) => void;
   logout: () => void;
   can: (perm: string) => boolean;
 }
 export const useAuth = create<AuthState>()(persist((set, get) => ({
   setSession: (s) => { window.dispatchEvent(new Event('api-mutated')); set(s); }, // new account/workspace → drop cached data
+  refreshProfile: ({ user, business, businesses }) => set({ user, business, businesses }),
   logout: () => { window.dispatchEvent(new Event('api-mutated')); set({ token: undefined, user: undefined, business: undefined, businesses: undefined }); },
   can: (perm) => !!get().user?.permissions.includes(perm),
 }), { name: 'dialstack-session', partialize: (s) => ({ token: s.token, user: s.user, business: s.business, businesses: s.businesses }) }));
