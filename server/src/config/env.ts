@@ -88,7 +88,8 @@ if (parsed.NODE_ENV === 'production') {
 export const env = {
   ...parsed,
   LLM_PROVIDER: parsed.LLM_PROVIDER ?? (parsed.OPENAI_API_KEY ? 'openai' : 'local'),
-  EMBEDDING_PROVIDER: parsed.EMBEDDING_PROVIDER ?? (parsed.OPENAI_API_KEY ? 'openai' : 'local'),
+  // Free OpenAI-compatible hosts (Groq, Gemini…) don't serve OpenAI's embedding model — use the built-in embeddings there.
+  EMBEDDING_PROVIDER: parsed.EMBEDDING_PROVIDER ?? (parsed.OPENAI_API_KEY && /api\.openai\.com/.test(parsed.OPENAI_BASE_URL) ? 'openai' : 'local'),
   TELEPHONY_PROVIDER:
     parsed.TELEPHONY_PROVIDER ??
     (parsed.VAPI_API_KEY ? 'vapi' : parsed.TELNYX_API_KEY && parsed.TELNYX_APP_ID ? 'telnyx' : parsed.TWILIO_ACCOUNT_SID ? 'twilio' : 'simulator'),

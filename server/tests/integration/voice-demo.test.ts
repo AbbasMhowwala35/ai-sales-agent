@@ -59,3 +59,18 @@ describe('refused calls do not use up a lead\'s attempts', () => {
     } finally { clock.set(null); }
   });
 });
+
+describe('custom opening lines', () => {
+  it('a full custom opener is not followed by a second pitch, and a missing name leaves no gap', async () => {
+    const { openingMessage } = await import('../../src/services/agent/engine.js');
+    const agent = { name: 'Oliver', openingLine: 'Hey {{name}}! I’m Oliver, calling on behalf of {{business}}. We build websites for local businesses. Would you be open to a quick 30-second conversation?' };
+    const business = { name: '', ownerName: 'Abbas Mhowwala', compliance: { recordCalls: false } };
+    const out = openingMessage({ business, agent, lead: { contactName: '' } } as any);
+    expect(out).toMatch(/^Hey! I’m Oliver, calling on behalf of Abbas Mhowwala\./);
+    expect(out).toMatch(/AI assistant/);
+    expect(out).not.toMatch(/The reason I’m calling/);
+    expect(out).not.toMatch(/recorded/);
+    const short = openingMessage({ business, agent: { name: 'Oliver', openingLine: 'Hi {{name}}, Oliver here from {{business}}.' }, lead: { contactName: 'Amy Shah' } } as any);
+    expect(short).toMatch(/^Hi Amy, Oliver here from Abbas Mhowwala\..*The reason I’m calling/);
+  });
+});

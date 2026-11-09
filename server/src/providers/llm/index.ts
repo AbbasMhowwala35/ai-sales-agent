@@ -33,7 +33,9 @@ export class OpenAIProvider implements LLMProvider {
     let data: any;
     try { data = await jsonOrThrow(res, 'OpenAI'); } catch (e) {
       // No credits / bad key: stop calling OpenAI for the rest of this run; the agent uses its built-in sales engine.
-      if (isAccountError(e)) { logger.warn('OpenAI chat unavailable (no credits or invalid key) — switching to the built-in sales engine'); setLLM(null); }
+      // Free tiers (Groq, Gemini) hit per-minute limits: pause the AI for a minute instead of turning it off for good.
+      if (isRateLimit(e)) { logger.warn('AI model rate-limited — using the built-in sales engine for 60s'); pauseLLM(60_000); }
+      else if (isAccountError(e)) { logger.warn('AI model unavailable (no credits or invalid key) — switching to the built-in sales engine'); setLLM(null); }
       throw e;
     }
     const msg = data.choices?.[0]?.message ?? {};
@@ -56,3 +58,13 @@ export function getLLM(): LLMProvider | null {
   return cached;
 }
 export function setLLM(p: LLMProvider | null) { cached = p; }
+let pauseTimer: NodeJS.Timeout | undefined;
+function pauseLLM(ms: number) {
+  const was = cached; cached = null;
+  clearTimeout(pauseTimer); pauseTimer = setTimeout(() => { if (cached === null) cached = was; }, ms); pauseTimer.unref?.();
+}
+/** A temporary per-minute limit (not an empty account). */
+export function isRateLimit(e: unknown) {
+  const m = String((e as any)?.message ?? e);
+  return /\b429\b|rate.?limit|too many requests|RESOURCE_EXHAUSTED|tokens per minute|requests per minute/i.test(m) && !/insufficient_quota|credit_balance|billing/i.test(m);
+}

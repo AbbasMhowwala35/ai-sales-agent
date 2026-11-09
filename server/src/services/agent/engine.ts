@@ -4,6 +4,7 @@ import { retrieve, extractiveAnswer } from '../knowledge/retrieve.js';
 import { detectIntents, extractBudget, extractTimeline, parseMeetingTime, formatMeetingTime, parseFollowUp, timeParts } from './nlu.js';
 import { tokenize } from '../../providers/embeddings/index.js';
 import { leadTimezone } from '../calls/compliance.js';
+import { offerTypeFor, audienceFor } from './categories.js';
 import { salesProfile, relevantProof, sameTopic, problemMenu, matchPain, extractFrequency, impactLine, twoDays, classifyObjection, namedTool, playbookPrompt, type ObjectionKind } from './playbook.js';
 
 /**
@@ -36,9 +37,16 @@ export interface ConversationState {
     pain?: string;
     tool?: string;
     proofUsed?: boolean;
+    noWebsite?: boolean;
+    email?: string;
+    sendInfo?: string;
+    decisionMaker?: string;
+    unknownQs?: number;
+    entryPriceSaid?: boolean;
+    proofAsked?: boolean;
   };
   /** What the agent asked last — used to interpret short answers like "no thanks" or "tomorrow". */
-  lastAsk?: 'permission' | 'discovery' | 'meeting_offer' | 'time' | 'callback_time' | 'anything_else' | 'problem_menu' | 'impact' | 'reframe' | 'reframe_permission' | 'gap1' | 'gap2' | 'checkback' | 'nurture_pain';
+  lastAsk?: 'permission' | 'discovery' | 'meeting_offer' | 'time' | 'callback_time' | 'anything_else' | 'problem_menu' | 'impact' | 'reframe' | 'reframe_permission' | 'gap1' | 'gap2' | 'checkback' | 'nurture_pain' | 'gatekeeper' | 'email' | 'info_followup';
   recordingConsent?: boolean;
   optOut?: boolean;
   transfer?: boolean;
@@ -55,7 +63,13 @@ export type EngineAction =
 export interface TurnResult { reply: string; end: boolean; actions: EngineAction[]; state: ConversationState }
 export interface EngineContext { business: any; agent: any; lead?: any; campaign?: any; now?: Date }
 
-const firstName = (n?: string) => (n ?? '').split(' ')[0];
+/** "Priya Sharma" → "Priya"; "Dr. Anjali Mehta" → "Dr. Mehta" (never just "Dr."). */
+const firstName = (n?: string) => {
+  const w = (n ?? '').trim().split(/\s+/).filter(Boolean);
+  if (!w.length) return '';
+  if (/^(dr|mr|mrs|ms|miss|prof|sir|shri|smt)\.?$/i.test(w[0])) return w.length > 1 ? `${w[0].replace(/\.?$/, '.').replace(/^./, (c) => c.toUpperCase())} ${w[w.length - 1]}` : '';
+  return w[0];
+};
 const DISCLOSURE_RE = /\b(ai|a\.i\.|artificial intelligence|virtual assistant|automated assistant|digital assistant)\b/i;
 
 export function newState(): ConversationState {
@@ -97,9 +111,14 @@ export function openingMessage(ctx: EngineContext) {
   let intro = agent?.openingLine
     ? agent.openingLine.replace(/\{\{\s*name\s*\}\}/g, name).replace(/\{\{\s*company\s*\}\}/g, lead?.companyName ?? '').replace(/\{\{\s*business\s*\}\}/g, brandName(business)).replace(/\s+,/g, ',')
     : isSolo(business) ? `Hey${name ? ' ' + name : ''}, it’s ${me} — I work with ${ownerFirst(business)}.` : `Hey${name ? ' ' + name : ''}, it’s ${me} from ${business.name}.`;
+  // When the lead has no name, "Hey {{name}}!" would read "Hey !" — tidy the leftover gap.
+  intro = intro.replace(/\s+([!?.,])/g, '$1').replace(/\s{2,}/g, ' ').trim();
+  // A custom opening that already pitches and asks for time stands on its own — don't add a second pitch after it.
+  const ownPitch = !!agent?.openingLine && (intro.split(/\s+/).length > 30 || /\?/.test(intro));
   const recorded = business?.compliance?.recordCalls !== false;
   if (!DISCLOSURE_RE.test(intro)) intro = `${intro.replace(/\s*$/, '')} Quick heads-up, I’m an AI assistant${recorded ? ', and this call’s recorded' : ''}.`;
   const rec = recorded && !/recorded/i.test(intro) ? ' This call’s recorded.' : '';
+  if (ownPitch) return `${intro}${rec}`;
   // Research: stating the reason up front ~doubles success; asking “is this a bad time?” cuts bookings. So: reason + a small, specific ask.
   const reason = salesProfile(ctx).reason;
   const ask = formal(ctx) ? 'May I take 30 seconds, and you can decide if it’s worth a conversation?' : 'Can I have 30 seconds? Then you decide if it’s worth a chat.';
@@ -107,21 +126,48 @@ export function openingMessage(ctx: EngineContext) {
 }
 
 const DISCOVERY = [
-  (ctx: EngineContext) => `Out of curiosity, how are you handling ${topic(ctx)} at ${ctx.lead?.companyName ?? 'your place'} right now?`,
+  (ctx: EngineContext) => offerTypeFor(ctx.business)?.key === 'website'
+    ? `Out of curiosity, how do people usually find ${ctx.lead?.companyName ?? 'you'} right now — Google, Instagram, or mostly word of mouth?`
+    : `Out of curiosity, how are you handling ${topic(ctx)} at ${ctx.lead?.companyName ?? 'your place'} right now?`,
   () => `And what’s the part of that that costs you the most — time, money, or customers slipping through?`,
   () => `If you could fix that, is it something you’d want sorted in the next month or two, or more of a later-this-year thing?`,
 ];
 
+/** "Starts $ 200" → "starts at $200"; "$99 per month" → "is $99 per month". */
+function priceText(p: any) {
+  const raw = String(p.price).replace(/([$₹£€])\s+/g, '$1').replace(/\s+/g, ' ').trim();
+  const m = raw.match(/^(starts?|starting|from)\s*(at|from)?\s*(.+)$/i);
+  return m ? `starts at ${m[3]}` : /^(free|included)/i.test(raw) ? `is ${raw.toLowerCase()}` : `is ${raw}`;
+}
+export function priceAnswer(ctx: EngineContext, q = '') {
+  const items: any[] = [...(ctx.business.products ?? []), ...(ctx.business.services ?? [])].filter((p: any) => p?.name && p?.price);
+  if (!items.length) return '';
+  const cheapest = /cheap|lowest|smallest|basic|minimum|entry/i.test(q);
+  const yearly = (p: any) => { const n = parseFloat(String(p.price).replace(/[^\d.]/g, '')) || 1e9; return /month|mo\b|monthly/i.test(p.price) ? n * 12 : /week/i.test(p.price) ? n * 52 : n; };
+  const list = cheapest ? [items.slice().sort((a, b) => yearly(a) - yearly(b))[0]] : items.slice(0, 2);
+  return `${list.map((p) => `${p.name} ${priceText(p)}`).join(', and ')}.`.replace(/^./, (c) => c.toUpperCase());
+}
+/** Turn a knowledge snippet into something you could say out loud: no bullets, no "Field:" labels, short. */
+function speakable(t: string) {
+  let out = t.replace(/(^|\s)[-•*]\s+/g, ' ').replace(/\b[A-Z][\w ]{2,24}:\s+/g, '').replace(/\s{2,}/g, ' ').trim();
+  const words = out.split(/\s+/);
+  if (words.length > 40) out = out.split(/(?<=[.!?])\s+/)[0];
+  if (out.split(/\s+/).length > 40) out = out.split(/\s+/).slice(0, 35).join(' ').replace(/[,;:]?$/, '…');
+  return out;
+}
 async function kbAnswer(ctx: EngineContext, q: string) {
-  const chunks = await retrieve(ctx.business._id, q, 3, 0.12);
+  // Prices come straight from the business profile — never guessed, never from internal notes.
+  if (detectIntents(q).price) { const p = priceAnswer(ctx, q); if (p) return p; }
+  // The "Sales scripts" document is coaching for the caller, not something to read to a prospect.
+  const chunks = (await retrieve(ctx.business._id, q, 4, 0.12)).filter((c) => !/script/i.test(c.title ?? '')).slice(0, 3);
   const kb = chunks.length ? extractiveAnswer(q, chunks, 2) : '';
-  if (kb) return kb;
-  // Prices are in the business profile even when the knowledge base is empty.
-  if (detectIntents(q).price) {
-    const priced = [...(ctx.business.products ?? []), ...(ctx.business.services ?? [])].filter((p: any) => p?.name && p?.price).slice(0, 2);
-    if (priced.length) return `${priced.map((p: any) => `${p.name} is ${p.price}`).join(', and ')}.`;
-  }
-  return '';
+  if (!kb) return '';
+  // Only answer when the snippet shares real words with the question — otherwise it's a guess, and we don't guess.
+  const STOP = new Set(['website', 'websites', 'business', 'you', 'your', 'our', 'can', 'do', 'does', 'the', 'what', 'how', 'through', 'with', 'for']);
+  const qw = new Set(tokenize(q).filter((t) => !STOP.has(t)));
+  const shared = new Set(tokenize(kb).filter((t) => qw.has(t)));
+  if (qw.size >= 2 && shared.size < 2) return '';
+  return speakable(kb);
 }
 
 function matchObjection(ctx: EngineContext, text: string) {
@@ -195,8 +241,11 @@ function bookReply(ctx: EngineContext, state: ConversationState, at: Date, kind:
   state.slots.meetingAt = at.toISOString(); state.slots.meetingKind = kind;
   const who = isSolo(ctx.business) ? ownerFirst(ctx.business) : state.slots.meetingWith === 'owner' ? `our founder` : 'one of our specialists';
   if (kind === 'callback') { state.stage = 'ended'; return { reply: `Perfect — I’ll give you a ring ${when}. Talk then!`, end: true, actions: [{ type: 'book' as const, at, kind, display: when }] }; }
-  state.stage = 'wrapup'; state.lastAsk = 'anything_else';
-  return { reply: `Perfect — you’re booked with ${who} for ${when}, on Google Meet. I’ll send the invite and link to your email. Anything you’d like them to know beforehand?`, actions: [{ type: 'book' as const, at, kind, display: when, with: state.slots.meetingWith ?? 'specialist' }] };
+  state.stage = 'wrapup';
+  const act = [{ type: 'book' as const, at, kind, display: when, with: state.slots.meetingWith ?? 'specialist' }];
+  if (!ctx.lead?.email && !state.slots.email) { state.lastAsk = 'email'; return { reply: `Perfect — you’re booked with ${who} for ${when}, on Google Meet. What’s the best email to send the invite to?`, actions: act }; }
+  state.lastAsk = 'anything_else';
+  return { reply: `Perfect — you’re booked with ${who} for ${when}, on Google Meet. I’ll send the invite and link to ${state.slots.email ?? 'your email'}. Anything you’d like them to know beforehand?`, actions: act };
 }
 
 /** Rule-based dialogue manager — used offline and as a fallback if the LLM fails mid-call. */
@@ -217,6 +266,18 @@ async function ruleTurn(ctx: EngineContext, state: ConversationState, text: stri
   }
   // ---- Wrap-up after booking: "no thanks" means "nothing else", not "not interested" ----
   if (state.stage === 'wrapup') {
+    const email = text.match(/[\w.+-]+@[\w-]+(\.[\w-]+)+/)?.[0];
+    if (email || state.lastAsk === 'email') {
+      if (email) state.slots.email = email.toLowerCase();
+      if (!email && (i.deny || i.nothingElse || i.notInterested)) {
+        state.stage = 'ended';
+        const when = state.slots.meetingAt ? formatMeetingTime(new Date(state.slots.meetingAt), zone) : '';
+        return { reply: `No problem — I’ll send it by WhatsApp to this number instead.${when ? ` You’re all set for ${when}.` : ''} Talk soon${name ? ', ' + name : ''}!`, end: true };
+      }
+      state.lastAsk = 'anything_else';
+      const what = state.slots.meetingAt ? 'The invite’s on its way.' : `${isSolo(ctx.business) ? ownerFirst(ctx.business) : 'The team'} will send the details there today.`;
+      return { reply: email ? `Got it — ${email.toLowerCase()}. ${what} Anything you’d like ${isSolo(ctx.business) ? ownerFirst(ctx.business) : 'them'} to know beforehand?` : `No problem — I’ll send it by WhatsApp to this number instead. Anything you’d like ${isSolo(ctx.business) ? ownerFirst(ctx.business) : 'them'} to know beforehand?` };
+    }
     if (i.question || i.price) {
       const ans = matchObjection(ctx, text) ?? (await kbAnswer(ctx, text));
       return { reply: `${ans || 'Good one — I’ll make sure that’s covered on the call.'} Anything else?` };
@@ -229,6 +290,68 @@ async function ruleTurn(ctx: EngineContext, state: ConversationState, text: stri
     state.slots.requirements.push(text.slice(0, 300));
     state.stage = 'ended';
     return { reply: `Got it — I’ll pass that straight on so they come prepared. ${bye}`, end: true };
+  }
+
+  const prof = salesProfile(ctx);
+  const [d1, d2] = twoDays(zone);
+  const owner = isSolo(ctx.business) ? ownerFirst(ctx.business) : 'our team';
+
+  // ---- Talking to someone who isn't the decision maker (receptionist, staff) ----
+  const gatekeeper = /\b(i'?m|i am) (just |only )?(the |a )?(receptionist|front desk|staff|employee|assistant|manager here|worker)|owner (is|isn'?t|is not|'s) (not )?(here|in|available|around|out)|(he|she|sir|madam|boss|owner) (is |'s )?(not here|not in|out|not available|away)|not the owner|malik (nahi|nahin) hai/i.test(text);
+  if (state.lastAsk === 'gatekeeper' || gatekeeper) {
+    if (state.lastAsk !== 'gatekeeper') {
+      state.lastAsk = 'gatekeeper';
+      return { reply: `Ah, no problem at all — thanks for picking up. When’s the best time to catch the owner, and who should I ask for?` };
+    }
+    const who = text.match(/\b(?:name is|ask for|speak (?:to|with)|called|it'?s)\s+((?:mr|mrs|ms|dr|sir)\.?\s+)?([A-Z][a-z]+(?:\s[A-Z][a-z]+)?)/i);
+    if (who) state.slots.decisionMaker = `${who[1] ? who[1].replace(/\.?\s*$/, '. ').replace(/^./, (c) => c.toUpperCase()) : ''}${who[2]}`.trim();
+    const when = parseMeetingTime(/\b(today|tomorrow|kal|monday|tuesday|wednesday|thursday|friday|saturday)\b/i.test(text) ? text : `tomorrow ${text}`, zone) ?? parseMeetingTime('tomorrow morning', zone)!;
+    const display = formatMeetingTime(when, zone);
+    state.stage = 'ended';
+    return { reply: `Perfect — I’ll call back ${display}${state.slots.decisionMaker ? ` and ask for ${state.slots.decisionMaker}` : ''}. Thanks so much${name ? ', ' + name : ''}, have a great day!`, end: true, actions: [{ type: 'book', at: when, kind: 'callback', display }] };
+  }
+
+  // ---- They ask for details / examples / proof: say yes, honestly, and keep the door open ----
+  const proofAsk = /\b(examples?|portfolio|past (work|projects?)|worked with|case stud(y|ies)|references?|testimonials?|scam|fraud|legit|genuine|trust you|how do i know|show me (your )?work)\b/i.test(text);
+  const infoAsk = classifyObjection(text) === 'send_info' || /\b(send|share|email|whatsapp|mail)\b.{0,25}\b(details|info|information|portfolio|examples?|brochure|samples?|work|it|something)\b/i.test(text);
+  // Early in the call, "just send me an email" is handled by the playbook (agree, then find the real problem first).
+  const earlyInfo = infoAsk && !proofAsk && (state.lastAsk === 'problem_menu' || state.lastAsk === 'permission') && prof.pains.length >= 2;
+  if (earlyInfo) { const ch = /whatsapp/i.test(text) ? 'WhatsApp' : /\b(e-?mail|mail)\b/i.test(text) ? 'email' : undefined; if (ch) state.slots.sendInfo = ch; }
+  if ((proofAsk || infoAsk) && !earlyInfo) {
+    const channel = /whatsapp/i.test(text) ? 'WhatsApp' : /\b(e-?mail|mail)\b/i.test(text) ? 'email' : undefined;
+    const email = text.match(/[\w.+-]+@[\w-]+(\.[\w-]+)+/)?.[0];
+    if (email) state.slots.email = email.toLowerCase();
+    if (channel || infoAsk) { state.slots.sendInfo = channel ?? 'WhatsApp'; state.slots.requirements.push(`Asked for ${proofAsk ? 'examples / portfolio' : 'details'} on ${state.slots.sendInfo}`); }
+    const how = state.slots.sendInfo === 'email' ? (state.slots.email ? `to ${state.slots.email}` : 'by email') : 'on WhatsApp to this number';
+    const what = proofAsk ? 'the portfolio' : 'the details';
+    if (state.slots.sendInfo === 'email' && !state.slots.email) { state.lastAsk = 'email'; state.stage = 'wrapup'; return { reply: `Sure — I’ll have ${owner} email ${what} over. What’s the best email for that?` }; }
+    if (infoAsk && !proofAsk) {
+      state.stage = 'closing'; state.lastAsk = 'info_followup';
+      return { reply: `Sure — I’ll have ${owner} send the details ${how} today. If it looks useful, would a quick 15 minutes ${d1} or ${d2} help, or would you rather just reply when you’ve had a look?` };
+    }
+    const pf = prof.proof[0];
+    state.stage = 'closing'; state.lastAsk = 'info_followup'; state.slots.sendInfo ??= 'WhatsApp';
+    if (state.slots.proofAsked) return { reply: `Completely fair. ${isSolo(ctx.business) ? `${owner} is a real freelance developer — you can` : 'You can'} look at the work and talk to ${isSolo(ctx.business) ? 'him' : 'the team'} directly before you pay anything. The portfolio comes ${how} today. Sound fair?` };
+    state.slots.proofAsked = true;
+    return { reply: `Totally fair to ask — you should check before trusting anyone who calls you.${pf ? ` ${pf}` : ''} I’ll have ${owner} send ${/scam|fraud|legit|genuine|trust|know/i.test(text) ? 'the portfolio and a couple of past projects' : 'some examples of past work'} ${how} so you can see for yourself — no commitment. Does that work?` };
+  }
+  if (state.lastAsk === 'info_followup') {
+    state.stage = 'ended';
+    if (i.meeting || parts.hasDay) { state.stage = 'scheduling'; state.schedulingKind = 'meeting'; state.lastAsk = 'time'; state.slots.interest = 'yes'; }
+    else return { reply: `Perfect — it’ll be with you today. ${bye}`, end: true };
+  }
+
+  // ---- "What is this about?" → the reason, plainly, then the problem menu ----
+  if (/\b(what('?s| is) (this|it|the call) (about|regarding|for)|what do you (want|do|sell|offer)|why (are you|did you) (calling|call)|what is this|what'?s this|kis (baare|liye))\b/i.test(text)) {
+    state.stage = 'discovery'; state.lastAsk = 'problem_menu';
+    return { reply: `Sure — ${prof.reason}. ${problemMenu(prof)}` };
+  }
+
+  // ---- No website / only on Instagram: that IS the problem, so label it and quantify ----
+  if (offerTypeFor(ctx.business)?.key === 'website' && /\b(no website|don'?t have (a |any )?website|do not have (a |any )?website|without (a )?website|(only|just) (on |through )?(instagram|facebook|insta|whatsapp|google maps)|website (hai )?nahi|website nahin)\b/i.test(text) && !state.slots.noWebsite) {
+    state.slots.noWebsite = true; state.slots.pain = 'no website — only social media'; state.slots.pains.push(text.slice(0, 200));
+    state.stage = 'discovery'; state.lastAsk = 'impact';
+    return { reply: `Got it — so right now people can only find you on Instagram, and anyone searching Google for ${audienceFor(prof.audience).key === 'other' ? 'what you do' : 'a place like yours'} won’t see you at all. Roughly how many enquiries a month do you think you’re missing because of that?` };
   }
 
   // ---- They want to meet the owner/founder ----
@@ -250,8 +373,10 @@ async function ruleTurn(ctx: EngineContext, state: ConversationState, text: stri
   }
   // Day but no time → ask for the time instead of guessing
   if ((state.stage === 'scheduling' || state.lastAsk === 'meeting_offer' || state.lastAsk === 'time' || callbackContext) && parts.hasDay && !parts.hasHour) {
-    state.slots.pendingDay = text; state.stage = 'scheduling'; state.schedulingKind ??= callbackContext ? 'callback' : 'meeting'; state.lastAsk = callbackContext ? 'callback_time' : 'time';
-    return { reply: `Great — what time ${/tomorrow/i.test(text) ? 'tomorrow' : 'that day'} suits you? Morning or afternoon?` };
+    const cb = callbackContext || (i.busy && !i.meeting);
+    state.slots.pendingDay = text; state.stage = 'scheduling'; state.schedulingKind ??= cb ? 'callback' : 'meeting'; state.lastAsk = cb ? 'callback_time' : 'time';
+    const day = /tomorrow|\bkal\b/i.test(text) ? 'tomorrow' : 'that day';
+    return { reply: cb ? `Sure, no problem — what time ${day} is good to call you?` : `Great — what time ${day} suits you? Morning or afternoon?` };
   }
   // Time but no day, with a day given earlier
   if (state.slots.pendingDay && parts.hasHour) {
@@ -283,8 +408,6 @@ async function ruleTurn(ctx: EngineContext, state: ConversationState, text: stri
     return { reply: state.schedulingTries === 1 ? `Sure — what day and time work best? Like tomorrow at 11, or Thursday afternoon?` : `Just give me a day and a rough time and I’ll lock it in.` };
   }
 
-  const prof = salesProfile(ctx);
-  const [d1, d2] = twoDays(zone);
   const exit = (): { reply: string; end: boolean; actions: EngineAction[] } => {
     state.stage = 'ended'; state.slots.interest = 'no';
     return { reply: `${pick(state, ['Totally understand — I won’t keep you.', 'No problem at all, I appreciate you hearing me out.'])} If anything changes, you’ve got our number. ${bye}`, end: true, actions: [{ type: 'not_interested' }] };
@@ -338,6 +461,7 @@ async function ruleTurn(ctx: EngineContext, state: ConversationState, text: stri
 
   if (i.busy && !/busy season|busy time of year/i.test(text)) {
     state.stage = 'scheduling'; state.schedulingKind = 'callback'; state.lastAsk = 'callback_time';
+    if (parts.hasDay && !parts.hasHour) { state.slots.pendingDay = text; return { reply: `Sure, no problem — what time ${/tomorrow|\bkal\b/i.test(text) ? 'tomorrow' : 'that day'} is good to call you?` }; }
     return { reply: pick(state, [`Oh — no worries at all. When’s a better time to catch you?`, `Totally get it. When would be a better time for a quick call back?`]) };
   }
 
@@ -372,22 +496,35 @@ async function ruleTurn(ctx: EngineContext, state: ConversationState, text: stri
     return { reply: pick(state, [`Totally fair. Can I ask — is it that you’ve already got this handled, or it’s just not a priority right now?`, `No problem. Just so I understand — is it the timing, or does it not sound like a fit?`]) };
   }
 
-  if (i.meeting || ((i.affirm || i.interested) && state.lastAsk === 'meeting_offer')) {
+  if ((i.meeting && !i.question) || ((i.affirm || i.interested) && state.lastAsk === 'meeting_offer' && !i.question && !i.price)) {
     state.slots.interest = 'yes'; state.stage = 'scheduling'; state.schedulingKind = 'meeting'; state.lastAsk = 'time';
     return { reply: `Love it. Does ${d1} or ${d2} work better — and morning or afternoon?` };
   }
 
   const answeringUs = state.stage === 'discovery' && (state.lastAsk === 'problem_menu' || state.lastAsk === 'impact') && !/\?/.test(text) && !i.price;
   if ((i.question || i.price) && !answeringUs) {
-    const ans = matchObjection(ctx, text) ?? (await kbAnswer(ctx, text)) ?? '';
-    if (!ans) { state.stage = 'closing'; state.lastAsk = 'meeting_offer'; return { reply: `Good question — I don’t want to guess and give you the wrong answer. That’s exactly what the specialist covers. Worth 15 minutes on Google Meet, ${d1} or ${d2}?` }; }
+    const howItWorks = /how (does|would|will) (it|this|that) work|what('?s| is) the process|how do (you|we) (start|begin)/i.test(text);
+    const ans = howItWorks ? '' : matchObjection(ctx, text) ?? (await kbAnswer(ctx, text)) ?? '';
+    if (!ans) {
+      state.slots.unknownQs = (state.slots.unknownQs ?? 0) + 1; state.slots.requirements.push(`Asked: ${text.slice(0, 200)}`);
+      if (howItWorks) {
+        state.slots.unknownQs--; state.slots.requirements.pop();
+        const items: any[] = [...(ctx.business.products ?? []), ...(ctx.business.services ?? [])];
+        const it = items.find((p) => p.name === state.slots.offered[0]) ?? bestOffer(ctx, `${text} ${state.slots.pain ?? ''}`);
+        state.stage = 'closing'; state.lastAsk = 'meeting_offer';
+        return { reply: `Simple — ${owner === 'our team' ? 'we' : owner} look${owner === 'our team' ? '' : 's'} at what you have today on a quick 15-minute call, then ${it ? `${it.name.toLowerCase()} is planned around what you need` : 'you get a clear plan and price'}, no obligation. ${d1[0].toUpperCase() + d1.slice(1)} or ${d2}?` };
+      }
+      state.stage = 'closing'; state.lastAsk = 'meeting_offer';
+      if (state.slots.unknownQs > 1) return { reply: `I’ve noted that down so ${owner} gives you a proper answer rather than me guessing. Want ${isSolo(ctx.business) ? 'him' : 'them'} to WhatsApp you, or would a quick 15-minute call ${d1} or ${d2} be easier?` };
+      return { reply: `Good question — I don’t want to guess and give you the wrong answer. That’s exactly what ${owner === 'our team' ? 'the specialist' : owner} covers. Worth 15 minutes on Google Meet, ${d1} or ${d2}?` };
+    }
     if (state.stage === 'discovery' && !state.slots.pain) {
       const heard = state.messages.some((m) => m.role === 'assistant' && /one of (three|two) things/.test(m.content));
       state.lastAsk = 'problem_menu';
       return { reply: `${ans} ${heard ? 'So of those things I mentioned — which one’s the bigger headache for you?' : problemMenu(prof)}` };
     }
     state.stage = 'closing'; state.lastAsk = 'meeting_offer';
-    return { reply: `${ans} Want to see it on your own setup? ${testDrive(ctx, d1, d2)}` };
+    return { reply: `${ans} ${testDrive(ctx, d1, d2)}` };
   }
 
   if (state.stage === 'discovery') {
@@ -425,7 +562,7 @@ async function ruleTurn(ctx: EngineContext, state: ConversationState, text: stri
   }
 
   if (state.stage === 'closing') {
-    if (i.affirm || i.interested) { state.slots.interest = 'yes'; state.stage = 'scheduling'; state.schedulingKind = 'meeting'; state.lastAsk = 'time'; return { reply: `Great. ${d1[0].toUpperCase() + d1.slice(1)} or ${d2} — and morning or afternoon?` }; }
+    if ((i.affirm || i.interested) && !i.question && !i.price) { state.slots.interest = 'yes'; state.stage = 'scheduling'; state.schedulingKind = 'meeting'; state.lastAsk = 'time'; return { reply: `Great. ${d1[0].toUpperCase() + d1.slice(1)} or ${d2} — and morning or afternoon?` }; }
     if (i.deny) return exit();
     state.lastAsk = 'meeting_offer';
     // Already pitched: acknowledge what they added (timeline, budget, detail) and re-ask simply — never repeat the pitch.
@@ -487,10 +624,14 @@ function handleObjection(ctx: EngineContext, state: ConversationState, kind: Obj
       if (custom) return `${custom} Out of curiosity, what do you like most about ${tool ?? 'what you have now'}?`;
       return `${pick(state, ['Nice — sounds like you’re ahead of most.', 'Oh good, so you’ve already got something in place.'])} What do you like most about ${tool ?? 'it'}?`;
     }
-    case 'no_budget':
-      if (state.objectionCount++ >= 1) return 'exit';
+    case 'no_budget': {
       state.stage = 'closing'; state.lastAsk = 'meeting_offer';
-      return custom ? `Yeah, I hear that. ${custom} Would it be worth a quick 15 minutes to see for yourself?` : `Totally get it — nobody wants another bill. The 15-minute look is free, and you’d see straight away whether it pays for itself. If it doesn’t, no hard feelings. ${d1[0].toUpperCase() + d1.slice(1)} or ${d2}?`;
+      if (custom) { if (state.objectionCount++ >= 1) return 'exit'; return `Yeah, I hear that. ${custom} Would it be worth a quick 15 minutes to see for yourself?`; }
+      const entry = priceAnswer(ctx, 'cheapest');
+      if (state.objectionCount++ === 0) return `Totally get it — nobody wants another bill. The 15-minute look is free, and you’d see straight away whether it pays for itself. If it doesn’t, no hard feelings. ${d1[0].toUpperCase() + d1.slice(1)} or ${d2}?`;
+      if (entry && !state.slots.entryPriceSaid) { state.slots.entryPriceSaid = true; return `Makes sense for a smaller firm. For what it’s worth, ${entry.replace(/\.$/, '')} — and ${isSolo(ctx.business) ? ownerFirst(ctx.business) : 'we'} can start small and grow it later. Worth a quick look ${d1} or ${d2}, no pressure?`; }
+      return 'exit';
+    }
     case 'partner':
       state.stage = 'closing'; state.lastAsk = 'meeting_offer';
       return `Makes total sense — that’s a decision you’d make together. Want to bring them on the Google Meet too? I’ve got ${d1} or ${d2}.`;
