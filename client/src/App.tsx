@@ -26,8 +26,11 @@ const Loading = () => <div className="flex justify-center py-24 text-muted"><Spi
 
 export function App() {
   const token = useAuth((s) => s.token);
-  const setSession = useAuth((s) => s.setSession);
-  useEffect(() => { if (token) get('/auth/me').then(setSession).catch(() => undefined); }, [token, setSession]);
+  const refreshProfile = useAuth((s) => s.refreshProfile);
+  // Load the profile once per sign-in. (It used to save the token /auth/me returns, which changed the token,
+  // which called /auth/me again — about once a second, clearing every page's cache each time.)
+  const loggedIn = !!token;
+  useEffect(() => { if (loggedIn) get('/auth/me').then(refreshProfile).catch(() => undefined); }, [loggedIn, refreshProfile]);
   return (
     <>
       <Suspense fallback={<Loading />}>

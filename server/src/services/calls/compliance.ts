@@ -106,7 +106,10 @@ export async function canCall(lead: any, business: any, campaign: any | null, op
   }
   // Hard cap on attempts to the same lead across all campaigns in a rolling 7 days
   const since = new Date(now.getTime() - 7 * 86400_000);
-  const recent = await Call.countDocuments({ businessId: business._id, leadId: lead._id, direction: 'outbound', queuedAt: { $gte: since } });
+  // Only calls that actually reached the phone network count. A call the provider refused (trial limits, bad key,
+  // unverified number) never rang, so it must not use up the lead's attempts.
+  const recent = await Call.countDocuments({ businessId: business._id, leadId: lead._id, direction: 'outbound', queuedAt: { $gte: since },
+    $nor: [{ result: 'failed', providerCallId: { $in: [null, ''] } }] });
   if (recent >= (c.maxAttemptsPerLead ?? 3)) return { ok: false, reason: `Reached the maximum of ${c.maxAttemptsPerLead ?? 3} call attempts to this lead in 7 days` };
   const inFlight = await Call.exists({ businessId: business._id, leadId: lead._id, status: { $in: ['queued', 'ringing', 'in_progress'] } });
   if (inFlight) return { ok: false, reason: 'A call to this lead is already in progress', retryable: true };

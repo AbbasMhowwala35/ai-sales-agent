@@ -34,3 +34,28 @@ describe('free browser voice demo (shareable link)', () => {
     expect((await request(app).get(`/api/demo/${r.token}`)).status).toBeGreaterThanOrEqual(400);
   });
 });
+
+describe('refused calls do not use up a lead\'s attempts', () => {
+  it('calls the phone company refused (never rang) are not counted toward the 3-in-7-days limit', async () => {
+    const { Call } = await import('../../src/models/index.js');
+    const { clock } = await import('../../src/lib/clock.js');
+    clock.set(new Date('2026-11-09T06:30:00Z')); // Monday 12:00 IST
+    try {
+      const r = await register();
+      const { ICP_SETTINGS } = await import('../helpers.js');
+      await api(r.token).patch('/api/business', { ...ICP_SETTINGS, compliance: { callingDays: [1, 2, 3, 4, 5], callingWindowStart: '10:00', callingWindowEnd: '19:00' } });
+      const l = await api(r.token).post('/api/leads', { companyName: 'Amy Test', phone: '+919876830001' });
+      await api(r.token).post('/api/leads/bulk', { ids: [l.body._id], action: 'approve' });
+      const base = { businessId: r.businessId, leadId: l.body._id, direction: 'outbound', status: 'ended', queuedAt: clock.now() };
+      await Call.create([1, 2, 3].map(() => ({ ...base, result: 'failed', endReason: 'Twilio refused the call: trial accounts can’t run AI calls' })));
+      const ok = await api(r.token).post('/api/calls', { leadId: l.body._id });
+      expect(ok.status).toBeLessThan(300);
+      // real attempts (the call reached the network) still count
+      await Call.deleteMany({ businessId: r.businessId, leadId: l.body._id });
+      await Call.create([1, 2, 3].map((i) => ({ ...base, result: 'missed', providerCallId: `CA${i}` })));
+      const blocked = await api(r.token).post('/api/calls', { leadId: l.body._id });
+      expect(blocked.status).toBe(400);
+      expect(blocked.body.error.message).toMatch(/maximum of 3/);
+    } finally { clock.set(null); }
+  });
+});
