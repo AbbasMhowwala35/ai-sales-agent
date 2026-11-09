@@ -97,9 +97,14 @@ export function openingMessage(ctx: EngineContext) {
   let intro = agent?.openingLine
     ? agent.openingLine.replace(/\{\{\s*name\s*\}\}/g, name).replace(/\{\{\s*company\s*\}\}/g, lead?.companyName ?? '').replace(/\{\{\s*business\s*\}\}/g, brandName(business)).replace(/\s+,/g, ',')
     : isSolo(business) ? `Hey${name ? ' ' + name : ''}, it’s ${me} — I work with ${ownerFirst(business)}.` : `Hey${name ? ' ' + name : ''}, it’s ${me} from ${business.name}.`;
+  // When the lead has no name, "Hey {{name}}!" would read "Hey !" — tidy the leftover gap.
+  intro = intro.replace(/\s+([!?.,])/g, '$1').replace(/\s{2,}/g, ' ').trim();
+  // A custom opening that already pitches and asks for time stands on its own — don't add a second pitch after it.
+  const ownPitch = !!agent?.openingLine && (intro.split(/\s+/).length > 30 || /\?/.test(intro));
   const recorded = business?.compliance?.recordCalls !== false;
   if (!DISCLOSURE_RE.test(intro)) intro = `${intro.replace(/\s*$/, '')} Quick heads-up, I’m an AI assistant${recorded ? ', and this call’s recorded' : ''}.`;
   const rec = recorded && !/recorded/i.test(intro) ? ' This call’s recorded.' : '';
+  if (ownPitch) return `${intro}${rec}`;
   // Research: stating the reason up front ~doubles success; asking “is this a bad time?” cuts bookings. So: reason + a small, specific ask.
   const reason = salesProfile(ctx).reason;
   const ask = formal(ctx) ? 'May I take 30 seconds, and you can decide if it’s worth a conversation?' : 'Can I have 30 seconds? Then you decide if it’s worth a chat.';

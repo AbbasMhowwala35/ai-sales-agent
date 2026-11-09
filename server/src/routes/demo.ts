@@ -48,7 +48,7 @@ demoRouter.post('/:token/chat', async (req, res) => {
   const { agent, business, campaign } = await load(req.params.token);
   const cat = (campaign as any)?.category;
   const lead = { contactName: body.name || '', companyName: cat ? `your ${cat.replace(/s$/i, '').toLowerCase()} business` : 'your business', designation: 'Owner', category: cat };
-  const ctx = { business, agent, lead, campaign: campaign ?? undefined };
+  const ctx = { business: { ...business, compliance: { ...(business as any).compliance, recordCalls: false } }, agent, lead, campaign: campaign ?? undefined };
   if (!body.message || !body.state) { const s = start(ctx as any); return res.json({ reply: s.reply, state: s.state, end: false, actions: [] }); }
   const state: ConversationState = { ...newState(), ...(body.state as object) };
   res.json(await respond(ctx as any, state, body.message));
